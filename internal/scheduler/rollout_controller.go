@@ -328,7 +328,7 @@ func (c *RolloutController) computeRollingTarget(app application.Application, ac
 	// Update active rollout status
 	if activeDep.RolloutStatus == deployment.RolloutPending {
 		c.depReg.UpdateRolloutStatusOnly(activeDep.ID, deployment.RolloutProgressing, "")
-	} else if activeReady == desired && oldTargetTotal == 0 {
+	} else if activeReady == desired && oldViable == 0 {
 		c.depReg.UpdateRolloutStatusOnly(activeDep.ID, deployment.RolloutCompleted, "")
 	} else if newActiveTarget == activeViable && activeViable < desired && oldTargetTotal == requiredOld {
 		// Rollout is paused/waiting

@@ -26,18 +26,21 @@ const (
 )
 
 type Instance struct {
-	ID            string         `json:"id"`
-	ApplicationID string         `json:"application_id"`
-	DeploymentID  string         `json:"deployment_id"`
-	NodeID        string         `json:"node_id,omitempty"`
-	ExecutionID   string         `json:"execution_id,omitempty"`
-	Status        InstanceStatus `json:"status"`
-	Health        InstanceHealth `json:"health,omitempty"`
-	ContainerID   string         `json:"container_id,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	StartedAt     *time.Time     `json:"started_at,omitempty"`
-	StoppedAt     *time.Time     `json:"stopped_at,omitempty"`
-	UnknownSince  *time.Time     `json:"unknown_since,omitempty"`
+	ID             string         `json:"id"`
+	ApplicationID  string         `json:"application_id"`
+	DeploymentID   string         `json:"deployment_id"`
+	NodeID         string         `json:"node_id,omitempty"`
+	ExecutionID    string         `json:"execution_id,omitempty"`
+	Status         InstanceStatus `json:"status"`
+	Health         InstanceHealth `json:"health"`
+	Draining       bool           `json:"draining"`
+	DrainStartedAt *time.Time     `json:"drain_started_at,omitempty"`
+	ContainerID    string         `json:"container_id,omitempty"`
+	Ports          []PortMapping  `json:"ports,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+	StartedAt      *time.Time     `json:"started_at,omitempty"`
+	StoppedAt      *time.Time     `json:"stopped_at,omitempty"`
+	UnknownSince   *time.Time     `json:"unknown_since,omitempty"`
 }
 
 // DeepCopy creates a complete copy of the Instance.
@@ -60,4 +63,9 @@ func (i *Instance) DeepCopy() Instance {
 	}
 
 	return copy
+}
+
+type PortMapping struct {
+	Internal int `json:"internal"`
+	External int `json:"external"`
 }

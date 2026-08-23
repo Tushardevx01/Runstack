@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 
 	"github.com/Tushardevx01/runstack/internal/node"
@@ -14,6 +15,7 @@ type NodeHandler struct {
 type RegisterRequest struct {
 	NodeID       string            `json:"nodeId"`
 	Hostname     string            `json:"hostname"`
+	IPAddress    string            `json:"ipAddress"`
 	CPUCores     int               `json:"cpuCores"`
 	OS           string            `json:"os"`
 	Architecture string            `json:"architecture"`
@@ -41,9 +43,18 @@ func (h *NodeHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := req.IPAddress
+	if ip == "" {
+		ip = r.RemoteAddr
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			ip = host
+		}
+	}
+
 	n := node.Node{
 		ID:           req.NodeID,
 		Hostname:     req.Hostname,
+		IPAddress:    ip,
 		CPUCores:     req.CPUCores,
 		OS:           req.OS,
 		Architecture: req.Architecture,

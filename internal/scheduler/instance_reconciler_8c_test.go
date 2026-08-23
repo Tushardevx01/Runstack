@@ -17,6 +17,7 @@ func setupReconciler() (*InstanceReconciler, *application.Registry, *deployment.
 	nodeReg := node.NewRegistry()
 
 	r := NewInstanceReconciler(appReg, depReg, instReg, nodeReg)
+	r.DrainTimeout = 0
 
 	spec := application.AppSpec{Replicas: 1}
 	app, _ := appReg.Create("app1", spec)
@@ -36,7 +37,7 @@ func TestReconciler_HealthUnhealthy(t *testing.T) {
 	r, _, depReg, instReg, _, inst := setupReconciler()
 
 	// Report unhealthy
-	instReg.ReportStatus(inst.ID, "node-1", inst.ExecutionID, instance.StatusRunning, instance.HealthUnhealthy, "cid")
+	instReg.ReportStatus(inst.ID, "node-1", inst.ExecutionID, instance.StatusRunning, instance.HealthUnhealthy, "cid", nil)
 
 	r.Reconcile()
 
@@ -58,7 +59,7 @@ func TestReconciler_HealthyRecoveryReset(t *testing.T) {
 	depReg.RecordCrash(inst.DeploymentID, 5)
 
 	// Make it healthy
-	instReg.ReportStatus(inst.ID, "node-1", inst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cid")
+	instReg.ReportStatus(inst.ID, "node-1", inst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cid", nil)
 
 	// Make it look like it started a long time ago
 	oldTime := time.Now().UTC().Add(-2 * time.Minute)
@@ -82,7 +83,7 @@ func TestReconciler_CrashLoopBreaker(t *testing.T) {
 
 	// Crash 5 times
 	for i := 0; i < deployment.MaxCrashLoopThreshold; i++ {
-		instReg.ReportStatus(inst.ID, "node-1", inst.ExecutionID, instance.StatusRunning, instance.HealthUnhealthy, "cid")
+		instReg.ReportStatus(inst.ID, "node-1", inst.ExecutionID, instance.StatusRunning, instance.HealthUnhealthy, "cid", nil)
 		r.Reconcile()
 
 		insts := instReg.List()
@@ -167,7 +168,7 @@ func TestReconciler_ObservationReturns(t *testing.T) {
 
 	// Observation returns
 	nodeReg.Heartbeat("node-1", nil)
-	instReg.ReportStatus(inst.ID, "node-1", inst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cid")
+	instReg.ReportStatus(inst.ID, "node-1", inst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cid", nil)
 
 	updated, _ = instReg.Get(inst.ID)
 	if updated.UnknownSince != nil {

@@ -134,7 +134,7 @@ func (r *Registry) Claim(id string, nodeID string) (Instance, error) {
 }
 
 // ReportStatus safely updates the instance status from the Agent.
-func (r *Registry) ReportStatus(id string, nodeID string, executionID string, status InstanceStatus, health InstanceHealth, containerID string) (Instance, error) {
+func (r *Registry) ReportStatus(id string, nodeID string, executionID string, status InstanceStatus, health InstanceHealth, containerID string, ports []PortMapping) (Instance, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -161,8 +161,16 @@ func (r *Registry) ReportStatus(id string, nodeID string, executionID string, st
 
 	// Idempotency check
 	if inst.Status == status && inst.Health == health {
+		updated := false
 		if containerID != "" && inst.ContainerID == "" {
 			inst.ContainerID = containerID
+			updated = true
+		}
+		if len(ports) > 0 && len(inst.Ports) == 0 {
+			inst.Ports = ports
+			updated = true
+		}
+		if updated {
 			r.instances[id] = inst.DeepCopy()
 		}
 		return inst.DeepCopy(), nil
@@ -182,6 +190,9 @@ func (r *Registry) ReportStatus(id string, nodeID string, executionID string, st
 
 	if containerID != "" && inst.ContainerID == "" {
 		inst.ContainerID = containerID
+	}
+	if len(ports) > 0 {
+		inst.Ports = ports
 	}
 
 	now := time.Now().UTC()
@@ -215,5 +226,28 @@ func (r *Registry) MarkUnknown(id string) error {
 	}
 
 	r.instances[id] = inst.DeepCopy()
+	return nil
+}
+
+func (r *Registry) MarkDraining(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	inst, exists := r.instances[id]
+	if !exists {
+		return ErrNotFound
+	}
+
+	if inst.Status == StatusStopped || inst.Status == StatusCrashed {
+		return nil
+	}
+
+	if !inst.Draining {
+		inst.Draining = true
+		now := time.Now().UTC()
+		inst.DrainStartedAt = &now
+		r.instances[id] = inst.DeepCopy()
+	}
+
 	return nil
 }

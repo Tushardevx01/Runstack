@@ -17,6 +17,7 @@ type Capabilities struct {
 type Node struct {
 	ID            string       `json:"id"`
 	Hostname      string       `json:"hostname"`
+	IPAddress     string       `json:"ipAddress"`
 	CPUCores      int          `json:"cpuCores"`
 	OS            string       `json:"os"`
 	Architecture  string       `json:"architecture"`

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Tushardevx01/runstack/internal/api"
 	"github.com/Tushardevx01/runstack/internal/instance"
+	"github.com/Tushardevx01/runstack/internal/node"
 	"github.com/Tushardevx01/runstack/internal/runtime"
 )
 
@@ -16,6 +17,7 @@ type InstanceExecutor struct {
 	NodeID    string
 	APIClient *api.Client
 	Runtime   runtime.ContainerRuntime
+	Ports     *node.PortAllocator
 	ctx       context.Context
 	cancel    context.CancelFunc
 }
@@ -26,6 +28,7 @@ func NewInstanceExecutor(nodeID string, apiClient *api.Client, cr runtime.Contai
 		NodeID:    nodeID,
 		APIClient: apiClient,
 		Runtime:   cr,
+		Ports:     node.NewPortAllocator(30000, 32767),
 		ctx:       ctx,
 		cancel:    cancel,
 	}
@@ -33,6 +36,7 @@ func NewInstanceExecutor(nodeID string, apiClient *api.Client, cr runtime.Contai
 
 func (e *InstanceExecutor) Start() {
 	slog.Info("InstanceExecutor started")
+	e.syncPorts()
 	go e.loop()
 }
 
@@ -79,15 +83,23 @@ func (e *InstanceExecutor) pollAndClaim() {
 		}
 
 		for _, p := range claimResp.Spec.Ports {
+			hostPort := p.HostPort
+			if hostPort == 0 {
+				allocated, err := e.Ports.Allocate(claimResp.Instance.ID)
+				if err == nil {
+					hostPort = allocated
+				}
+			}
 			spec.Ports = append(spec.Ports, runtime.PortMapping{
 				Internal: p.ContainerPort,
-				External: p.HostPort,
+				External: hostPort,
 			})
 		}
 
 		info, err := e.Runtime.Start(e.ctx, spec)
 		if err != nil {
-			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, instance.StatusCrashed, instance.HealthUnknown, "")
+			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, instance.StatusCrashed, instance.HealthUnknown, "", nil)
+			e.Ports.Release(inst.ID)
 			continue
 		}
 
@@ -96,7 +108,15 @@ func (e *InstanceExecutor) pollAndClaim() {
 			status = instance.StatusCrashed
 		}
 
-		_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, status, instance.HealthUnknown, info.ContainerID)
+		var instPorts []instance.PortMapping
+		for _, p := range spec.Ports {
+			instPorts = append(instPorts, instance.PortMapping{
+				Internal: p.Internal,
+				External: p.External,
+			})
+		}
+
+		_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, status, instance.HealthUnknown, info.ContainerID, instPorts)
 	}
 }
 
@@ -107,9 +127,6 @@ func (e *InstanceExecutor) monitorActive() {
 	}
 
 	for _, inst := range instances {
-		if inst.Status != instance.StatusStarting && inst.Status != instance.StatusRunning && inst.Status != instance.StatusStopping {
-			continue
-		}
 		if inst.ExecutionID == "" {
 			continue
 		}
@@ -121,12 +138,35 @@ func (e *InstanceExecutor) monitorActive() {
 
 		state, err := e.Runtime.Status(e.ctx, containerName)
 
+		if inst.Status == instance.StatusStopped || inst.Status == instance.StatusUnknown {
+			if err == nil {
+				// Zombie container!
+				_ = e.Runtime.Stop(e.ctx, containerName)
+				_ = e.Runtime.Remove(e.ctx, containerName)
+			}
+			e.Ports.Release(inst.ID)
+			continue
+		}
+		if inst.Status == instance.StatusCrashed {
+			if err == nil && state == runtime.StateRunning {
+				// CP thinks it's crashed (e.g. timeout), but it's still running. Fencing requires we kill it.
+				_ = e.Runtime.Stop(e.ctx, containerName)
+			}
+			e.Ports.Release(inst.ID)
+			// Leave the container around for manual docker logs debugging in V1
+			continue
+		}
+
+		if inst.Status != instance.StatusStarting && inst.Status != instance.StatusRunning && inst.Status != instance.StatusStopping {
+			continue
+		}
+
 		if err != nil {
 			if errors.Is(err, runtime.ErrContainerNotFound) {
 				if inst.Status == instance.StatusStopping {
-					_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, instance.StatusStopped, instance.HealthUnknown, containerName)
+					_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, instance.StatusStopped, instance.HealthUnknown, containerName, nil)
 				} else {
-					_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, instance.StatusCrashed, instance.HealthUnknown, containerName)
+					_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, instance.StatusCrashed, instance.HealthUnknown, containerName, nil)
 				}
 			} else if errors.Is(err, runtime.ErrContainerConflict) {
 				// stale execution
@@ -157,7 +197,7 @@ func (e *InstanceExecutor) monitorActive() {
 		}
 
 		if targetStatus != "" && targetStatus != inst.Status {
-			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, targetStatus, targetHealth, containerName)
+			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, targetStatus, targetHealth, containerName, nil)
 		}
 	}
 }

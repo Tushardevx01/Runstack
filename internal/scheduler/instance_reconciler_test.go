@@ -15,6 +15,7 @@ func TestInstanceReconciler_IdempotentScaleUp(t *testing.T) {
 	nodeReg := node.NewRegistry()
 
 	r := NewInstanceReconciler(appReg, depReg, instReg, nodeReg)
+	r.DrainTimeout = 0
 
 	// Create an app with replicas=2
 	spec := application.AppSpec{Replicas: 2}
@@ -44,6 +45,7 @@ func TestInstanceReconciler_OrphanRecovery(t *testing.T) {
 	nodeReg := node.NewRegistry()
 
 	r := NewInstanceReconciler(appReg, depReg, instReg, nodeReg)
+	r.DrainTimeout = 0
 
 	spec := application.AppSpec{Replicas: 1}
 	app, _ := appReg.Create("app1", spec)
@@ -96,6 +98,7 @@ func TestInstanceReconciler_ScaleDown(t *testing.T) {
 	nodeReg := node.NewRegistry()
 
 	r := NewInstanceReconciler(appReg, depReg, instReg, nodeReg)
+	r.DrainTimeout = 0
 
 	spec := application.AppSpec{Replicas: 1}
 	app, _ := appReg.Create("app1", spec)
@@ -132,6 +135,7 @@ func TestInstanceReconciler_DeploymentRollout(t *testing.T) {
 	nodeReg := node.NewRegistry()
 
 	r := NewInstanceReconciler(appReg, depReg, instReg, nodeReg)
+	r.DrainTimeout = 0
 
 	spec1 := application.AppSpec{Replicas: 1}
 	app, _ := appReg.Create("app1", spec1)

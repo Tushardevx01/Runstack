@@ -25,11 +25,12 @@ var (
 )
 
 type InstanceReconciler struct {
-	appReg  *application.Registry
-	depReg  *deployment.Registry
-	instReg *instance.Registry
-	nodeReg *node.Registry
-	mu      sync.Mutex
+	appReg       *application.Registry
+	depReg       *deployment.Registry
+	instReg      *instance.Registry
+	nodeReg      *node.Registry
+	DrainTimeout time.Duration
+	mu           sync.Mutex
 }
 
 func NewInstanceReconciler(
@@ -39,10 +40,11 @@ func NewInstanceReconciler(
 	nodeReg *node.Registry,
 ) *InstanceReconciler {
 	return &InstanceReconciler{
-		appReg:  appReg,
-		depReg:  depReg,
-		instReg: instReg,
-		nodeReg: nodeReg,
+		appReg:       appReg,
+		depReg:       depReg,
+		instReg:      instReg,
+		nodeReg:      nodeReg,
+		DrainTimeout: 10 * time.Second,
 	}
 }
 
@@ -98,22 +100,36 @@ func (r *InstanceReconciler) Reconcile() error {
 				slog.Info("Reconciler: scaling down", "app_id", appTarget.AppID, "dep_id", dep.ID, "excess", toStop)
 
 				sort.Slice(viableInstances, func(i, j int) bool {
-					// Prioritize dropping non-ready instances
+					// 1. Prioritize already draining instances
+					if viableInstances[i].Draining != viableInstances[j].Draining {
+						return viableInstances[i].Draining // True comes first
+					}
+					// 2. Prioritize non-ready instances
 					iReady := viableInstances[i].Status == instance.StatusRunning && viableInstances[i].Health == instance.HealthHealthy
 					jReady := viableInstances[j].Status == instance.StatusRunning && viableInstances[j].Health == instance.HealthHealthy
-
 					if iReady != jReady {
-						// True (ready) should be placed at the END of the list so it is NOT stopped (we stop the first `toStop` instances).
-						// Wait, the loop does: for i := 0; i < toStop; i++ { stop(viableInstances[i]) }
-						// So we want non-ready at the BEGINNING.
-						return !iReady // if i is not ready, it comes before j
+						return !iReady
 					}
+					// 3. Fallback to ID
 					return viableInstances[i].ID > viableInstances[j].ID
 				})
 
 				for i := 0; i < toStop; i++ {
 					inst := viableInstances[i]
-					r.instReg.UpdateState(inst.ID, instance.StatusStopped, inst.NodeID, inst.ContainerID)
+					if !inst.Draining {
+						_ = r.instReg.MarkDraining(inst.ID)
+						inst.Draining = true
+						now := time.Now().UTC()
+						inst.DrainStartedAt = &now
+					}
+
+					if inst.DrainStartedAt != nil && (r.DrainTimeout <= 0 || time.Since(*inst.DrainStartedAt) >= r.DrainTimeout) {
+						if inst.Status == instance.StatusAssigned || inst.Status == instance.StatusPending {
+							r.instReg.UpdateState(inst.ID, instance.StatusStopped, inst.NodeID, inst.ContainerID)
+						} else {
+							r.instReg.UpdateState(inst.ID, instance.StatusStopping, inst.NodeID, inst.ContainerID)
+						}
+					}
 				}
 			}
 		}

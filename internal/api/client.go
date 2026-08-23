@@ -71,13 +71,14 @@ func (c *Client) ClaimInstance(id string, nodeID string) (ClaimInstanceResponse,
 	return claimResp, nil
 }
 
-func (c *Client) ReportInstanceStatus(id string, nodeID, executionID string, status instance.InstanceStatus, health instance.InstanceHealth, containerID string) error {
+func (c *Client) ReportInstanceStatus(id string, nodeID, executionID string, status instance.InstanceStatus, health instance.InstanceHealth, containerID string, ports []instance.PortMapping) error {
 	body, _ := json.Marshal(InstanceStatusRequest{
 		NodeID:      nodeID,
 		ExecutionID: executionID,
 		Status:      status,
 		Health:      health,
 		ContainerID: containerID,
+		Ports:       ports,
 	})
 	req, err := http.NewRequest("POST", c.BaseURL+"/api/v1/instances/"+id+"/status", bytes.NewBuffer(body))
 	if err != nil {

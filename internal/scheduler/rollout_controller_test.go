@@ -56,7 +56,7 @@ func TestRolloutController_RollingUpdate_Initial(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		inst, _ := instReg.Create(app.ID, depV1.ID)
 		instReg.UpdateState(inst.ID, instance.StatusRunning, "node", "cid")
-		instReg.ReportStatus(inst.ID, "node", inst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cid")
+		instReg.ReportStatus(inst.ID, "node", inst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cid", nil)
 	}
 
 	targets := rc.ComputeTargets()
@@ -91,7 +91,7 @@ func TestRolloutController_RollingUpdate_Surge0(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		inst, _ := instReg.Create(app.ID, depV1.ID)
 		instReg.UpdateState(inst.ID, instance.StatusRunning, "node", "cid")
-		instReg.ReportStatus(inst.ID, "node", inst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cid")
+		instReg.ReportStatus(inst.ID, "node", inst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cid", nil)
 	}
 
 	targets := rc.ComputeTargets()

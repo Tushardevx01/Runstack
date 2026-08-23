@@ -77,6 +77,7 @@ type InstanceStatusRequest struct {
 	Status      instance.InstanceStatus `json:"status"`
 	Health      instance.InstanceHealth `json:"health,omitempty"`
 	ContainerID string                  `json:"container_id,omitempty"`
+	Ports       []instance.PortMapping  `json:"ports,omitempty"`
 }
 
 func (h *InstanceHandler) ReportStatus(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +100,7 @@ func (h *InstanceHandler) ReportStatus(w http.ResponseWriter, r *http.Request) {
 
 	oldInst, _ := h.InstanceRegistry.Get(id)
 
-	inst, err := h.InstanceRegistry.ReportStatus(id, req.NodeID, req.ExecutionID, req.Status, req.Health, req.ContainerID)
+	inst, err := h.InstanceRegistry.ReportStatus(id, req.NodeID, req.ExecutionID, req.Status, req.Health, req.ContainerID, req.Ports)
 	if err != nil {
 		if err == instance.ErrNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
