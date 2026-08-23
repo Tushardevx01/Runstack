@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Tushardevx01/runstack/internal/api"
@@ -17,11 +18,6 @@ type HealthResponse struct {
 	Status    string `json:"status"`
 	Service   string `json:"service"`
 	Timestamp string `json:"timestamp"`
-}
-
-type StatusResponse struct {
-	Status  string `json:"status"`
-	Version string `json:"version"`
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +43,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func main() {
+func runControlPlane() {
 	registry := node.NewRegistry()
 
 	// Background offline detection
@@ -79,7 +75,7 @@ func main() {
 				return
 			case <-ticker.C:
 				if err := sched.SchedulePendingJobs(); err != nil {
-					log.Printf("Scheduler error: %v", err)
+					slog.Error("Scheduler error", "error", err)
 				}
 			}
 		}
@@ -108,10 +104,11 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Println("RunStack Control Plane")
-	log.Println("Listening on http://localhost:8080")
+	slog.Info("RunStack Control Plane started")
+	slog.Info("Listening", "address", "http://localhost:8080")
 
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatal(err)
+		slog.Error("Server failed", "error", err)
+		os.Exit(1)
 	}
 }

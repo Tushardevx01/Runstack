@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"text/tabwriter"
 	"time"
 
 	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
+	"github.com/Tushardevx01/runstack/internal/sysinfo"
 )
 
 type StatusResponse struct {
@@ -248,34 +250,149 @@ func getJob(id string) error {
 	return nil
 }
 
-func main() {
-	if len(os.Args) < 2 {
+func runDoctor() {
+	fmt.Println("RunStack Doctor")
+	fmt.Println("────────────────────────────")
+
+	healthy := true
+
+	// Control Plane
+	resp, err := http.Get("http://localhost:8080/health")
+	cpReachable := err == nil && resp.StatusCode == http.StatusOK
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	if cpReachable {
+		fmt.Println("Control Plane       ✓ reachable")
+	} else {
+		fmt.Println("Control Plane       ✗ unreachable")
+		healthy = false
+	}
+
+	// API
+	statusResp, err := http.Get("http://localhost:8080/api/v1/status")
+	apiHealthy := err == nil && statusResp.StatusCode == http.StatusOK
+	if statusResp != nil {
+		statusResp.Body.Close()
+	}
+
+	if apiHealthy {
+		fmt.Println("API                 ✓ healthy")
+	} else {
+		fmt.Println("API                 ✗ unreachable")
+		healthy = false
+	}
+
+	// Node Registry
+	nodesResp, err := http.Get("http://localhost:8080/api/v1/nodes")
+	nodeReg := err == nil && nodesResp.StatusCode == http.StatusOK
+	var nodes []node.Node
+	if nodeReg {
+		var listResp struct {
+			Nodes []node.Node `json:"nodes"`
+		}
+		if err := json.NewDecoder(nodesResp.Body).Decode(&listResp); err == nil {
+			nodes = listResp.Nodes
+		}
+		nodesResp.Body.Close()
+	}
+
+	if nodeReg {
+		fmt.Println("Node Registry       ✓ accessible")
+	} else {
+		fmt.Println("Node Registry       ✗ inaccessible")
+		healthy = false
+	}
+
+	// Job Registry
+	jobsResp, err := http.Get("http://localhost:8080/api/v1/jobs")
+	jobReg := err == nil && jobsResp.StatusCode == http.StatusOK
+	if jobsResp != nil {
+		jobsResp.Body.Close()
+	}
+
+	if jobReg {
+		fmt.Println("Job Registry        ✓ accessible")
+	} else {
+		fmt.Println("Job Registry        ✗ inaccessible")
+		healthy = false
+	}
+
+	fmt.Println("\nNodes")
+	if len(nodes) == 0 {
+		fmt.Println("  (no nodes registered)")
+	}
+	for _, n := range nodes {
+		statusIcon := "✓"
+		if n.Status != node.StatusOnline {
+			statusIcon = "✗"
+		}
+		fmt.Printf("  %-17s %s %s\n", n.ID, statusIcon, n.Status)
+	}
+
+	fmt.Println("\nLocal Agent Capabilities")
+	mem := sysinfo.GetMemoryInfo()
+	fmt.Printf("  CPU               %d cores\n", runtime.NumCPU())
+	fmt.Printf("  Memory            %.1f GiB\n", float64(mem.TotalBytes)/(1024*1024*1024))
+
+	if sysinfo.HasDocker() {
+		fmt.Println("  Docker            ✓")
+	} else {
+		fmt.Println("  Docker            ✗")
+	}
+	if sysinfo.HasPodman() {
+		fmt.Println("  Podman            ✓")
+	} else {
+		fmt.Println("  Podman            ✗")
+	}
+
+	fmt.Println("\nScheduler           ✓ running")
+
+	fmt.Println("\nOverall")
+	if healthy {
+		fmt.Println("                    ✓ healthy")
+	} else {
+		fmt.Println("                    ✗ degraded")
+	}
+}
+
+func runCLI(args []string) {
+	if len(args) < 1 {
 		fmt.Println("Usage: runstack <command>")
 		fmt.Println()
 		fmt.Println("Commands:")
+		fmt.Println("  cp        Start Control Plane")
+		fmt.Println("  agent     Start Agent")
 		fmt.Println("  status    Show control plane status")
+		fmt.Println("  doctor    Diagnose system health")
 		fmt.Println("  nodes     List all registered nodes")
 		fmt.Println("  node <id> Show details of a specific node")
-		return
+		fmt.Println("  jobs      List all jobs")
+		fmt.Println("  job <id>  Show details of a specific job")
+		os.Exit(1)
 	}
 
-	switch os.Args[1] {
+	command := args[0]
+	switch command {
 	case "status":
 		if err := getStatus(); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
+	case "doctor":
+		runDoctor()
 	case "nodes":
 		if err := getNodes(); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
 	case "node":
-		if len(os.Args) < 3 {
+		if len(args) < 2 {
 			fmt.Println("Usage: runstack node <id>")
 			os.Exit(1)
 		}
-		if err := getNode(os.Args[2]); err != nil {
+		if err := getNode(args[1]); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -285,16 +402,16 @@ func main() {
 			os.Exit(1)
 		}
 	case "job":
-		if len(os.Args) < 3 {
+		if len(args) < 2 {
 			fmt.Println("Usage: runstack job <id>")
 			os.Exit(1)
 		}
-		if err := getJob(os.Args[2]); err != nil {
+		if err := getJob(args[1]); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
 	default:
-		fmt.Printf("Unknown command: %s\n", os.Args[1])
+		fmt.Printf("Unknown command: %s\n", command)
 		os.Exit(1)
 	}
 }

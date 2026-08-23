@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -71,7 +71,7 @@ func registerNode(nodeID string) error {
 		return fmt.Errorf("control plane returned status %d", resp.StatusCode)
 	}
 
-	log.Printf("Node registered: %s", nodeData.NodeID)
+	slog.Info("node registered", "node_id", nodeData.NodeID)
 	return nil
 }
 
@@ -108,17 +108,16 @@ func sendHeartbeat(nodeID string) error {
 	return nil
 }
 
-func main() {
-	log.Println("RunStack Agent")
-	log.Println("--------------")
+func runAgent() {
+	slog.Info("RunStack Agent starting")
 
 	nodeID := getHostname()
 
-	log.Println("Registering node...")
+	slog.Info("Registering node", "node_id", nodeID)
 
 	for {
 		if err := registerNode(nodeID); err != nil {
-			log.Printf("Registration failed: %v. Retrying in 5 seconds...", err)
+			slog.Warn("Registration failed. Retrying...", "error", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -132,11 +131,11 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		log.Println("Shutting down agent...")
+		slog.Info("Shutting down agent...")
 		cancel()
 	}()
 
-	log.Println("Heartbeat started")
+	slog.Info("Heartbeat started")
 
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
@@ -148,9 +147,9 @@ func main() {
 				return
 			case <-ticker.C:
 				if err := sendHeartbeat(nodeID); err != nil {
-					log.Printf("Heartbeat failed: %v", err)
+					slog.Error("Heartbeat failed", "error", err)
 				} else {
-					log.Println("Heartbeat sent")
+					slog.Debug("Heartbeat sent")
 				}
 			}
 		}
