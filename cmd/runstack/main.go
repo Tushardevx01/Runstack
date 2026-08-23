@@ -11,6 +11,7 @@ func main() {
 
 	if len(os.Args) < 2 {
 		runCLI([]string{})
+		return
 	}
 
 	command := os.Args[1]

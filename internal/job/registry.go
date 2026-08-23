@@ -119,7 +119,29 @@ func (r *Registry) Update(id string, params UpdateParams) (*Job, error) {
 		if j.Status == StatusRunning && *params.Status == StatusPending {
 			return nil, errors.New("cannot manually transition RUNNING to PENDING via Update")
 		}
+		if j.Status == StatusAssigned && *params.Status == StatusPending {
+			return nil, errors.New("cannot manually transition ASSIGNED to PENDING via Update")
+		}
+		// Block PENDING→FAILED and ASSIGNED→FAILED via Update.
+		// These transitions are only valid through internal recovery methods.
+		if *params.Status == StatusFailed && (j.Status == StatusPending || j.Status == StatusAssigned) {
+			return nil, errors.New("cannot manually transition to FAILED via Update")
+		}
 		j.Status = *params.Status
+	}
+
+	if oldStatus == StatusRunning || oldStatus == StatusSucceeded || oldStatus == StatusFailed {
+		if params.AssignedNodeID != nil || params.StartedAt != nil || params.Result != nil {
+			return nil, errors.New("cannot modify execution fields on running/terminal job")
+		}
+	}
+
+	// Block setting execution fields on PENDING jobs when not transitioning to ASSIGNED.
+	// A PENDING job with a non-empty AssignedNodeID or StartedAt violates state invariants.
+	if oldStatus == StatusPending && j.Status == StatusPending {
+		if params.AssignedNodeID != nil || params.StartedAt != nil || params.Result != nil {
+			return nil, errors.New("cannot set execution fields on PENDING job without status transition")
+		}
 	}
 
 	if params.AssignedNodeID != nil {
@@ -172,7 +194,7 @@ func (r *Registry) Claim(id, nodeID string) (*Job, error) {
 	jobCopy := *j
 	r.mu.Unlock()
 
-	slog.Info("job claimed", "job_id", id, "node_id", nodeID, "execution_id", j.ExecutionID)
+	slog.Info("job claimed", "job_id", id, "node_id", nodeID, "execution_id", jobCopy.ExecutionID)
 	return &jobCopy, nil
 }
 
@@ -190,6 +212,10 @@ func (r *Registry) ReportResult(id, nodeID string, execID string, res JobResult)
 		if j.AssignedNodeID != nodeID || j.ExecutionID != execID {
 			r.mu.Unlock()
 			return nil, errors.New("stale execution result")
+		}
+		if j.Result != nil && j.Result.ExitCode != res.ExitCode {
+			r.mu.Unlock()
+			return nil, errors.New("contradictory execution result")
 		}
 		jobCopy := *j
 		r.mu.Unlock()
@@ -237,7 +263,7 @@ func (r *Registry) ReportResult(id, nodeID string, execID string, res JobResult)
 	jobCopy := *j
 	r.mu.Unlock()
 
-	slog.Info("job result reported", "job_id", id, "node_id", nodeID, "execution_id", execID, "status", j.Status, "exit_code", res.ExitCode)
+	slog.Info("job result reported", "job_id", id, "node_id", nodeID, "execution_id", execID, "status", jobCopy.Status, "exit_code", res.ExitCode)
 	return &jobCopy, nil
 }
 

@@ -3,6 +3,7 @@ package scheduler
 import (
 	"log/slog"
 	"sort"
+	"sync"
 
 	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
@@ -10,10 +11,12 @@ import (
 )
 
 type Scheduler struct {
-	nodeRegistry     *node.Registry
-	jobRegistry      *job.Registry
-	ExecutionTimeout time.Duration
-	NodeGracePeriod  time.Duration
+	nodeRegistry       *node.Registry
+	jobRegistry        *job.Registry
+	ExecutionTimeout   time.Duration
+	NodeGracePeriod    time.Duration
+	mu                 sync.Mutex
+	lastAssignedNodeID string
 }
 
 func New(nodeRegistry *node.Registry, jobRegistry *job.Registry) *Scheduler {
@@ -26,6 +29,9 @@ func New(nodeRegistry *node.Registry, jobRegistry *job.Registry) *Scheduler {
 }
 
 func (s *Scheduler) SchedulePendingJobs() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Step 1: Recover jobs exceeding ExecutionTimeout
 	if s.ExecutionTimeout > 0 {
 		s.jobRegistry.RecoverExecutionTimeouts(s.ExecutionTimeout)
@@ -57,25 +63,44 @@ func (s *Scheduler) SchedulePendingJobs() error {
 		return onlineNodes[i].ID < onlineNodes[j].ID
 	})
 
-	selectedNode := onlineNodes[0]
+	startIndex := 0
+	if s.lastAssignedNodeID != "" {
+		for i, n := range onlineNodes {
+			if n.ID > s.lastAssignedNodeID {
+				startIndex = i
+				break
+			}
+		}
+	}
 
 	// Step 4: Find PENDING jobs
 	jobs := s.jobRegistry.List()
-
-	// Step 5: Assign jobs
+	var pendingJobs []job.Job
 	for _, j := range jobs {
 		if j.Status == job.StatusPending {
-			status := job.StatusAssigned
-			nodeID := selectedNode.ID
+			pendingJobs = append(pendingJobs, j)
+		}
+	}
+	// Sort jobs deterministically
+	sort.Slice(pendingJobs, func(i, j int) bool {
+		return pendingJobs[i].ID < pendingJobs[j].ID
+	})
 
-			_, err := s.jobRegistry.Update(j.ID, job.UpdateParams{
-				Status:         &status,
-				AssignedNodeID: &nodeID,
-			})
+	// Step 5: Assign jobs
+	currentIndex := startIndex
+	for _, j := range pendingJobs {
+		status := job.StatusAssigned
+		nodeID := onlineNodes[currentIndex].ID
 
-			if err == nil {
-				slog.Info("job assigned", "job_id", j.ID, "node_id", nodeID)
-			}
+		_, err := s.jobRegistry.Update(j.ID, job.UpdateParams{
+			Status:         &status,
+			AssignedNodeID: &nodeID,
+		})
+
+		if err == nil {
+			slog.Info("job assigned", "job_id", j.ID, "node_id", nodeID)
+			s.lastAssignedNodeID = nodeID
+			currentIndex = (currentIndex + 1) % len(onlineNodes)
 		}
 	}
 

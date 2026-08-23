@@ -500,3 +500,632 @@ func TestRegistry_StaleResult_NoMutation(t *testing.T) {
 		t.Fatalf("valid result failed: %v", err)
 	}
 }
+
+func TestRegistry_TerminalFencing(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job", "exit 1", 0) // MaxRetries=0 => 1 attempt max
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	// Claim
+	claimed, _ := r.Claim(j.ID, nodeID)
+
+	// CP times out job -> StatusFailed (Attempts=1 > MaxRetries=0)
+	r.RecoverExecutionTimeouts(0 * time.Second)
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusFailed {
+		t.Fatalf("expected FAILED, got %s", jAfter.Status)
+	}
+
+	// 1. Same node + same execID + same result -> 200 OK idempotent
+	_, err := r.ReportResult(j.ID, nodeID, claimed.ExecutionID, JobResult{ExitCode: -1})
+	if err != nil {
+		t.Fatalf("expected idempotent success for matching result, got: %v", err)
+	}
+
+	// 2. Same node + same execID + contradictory result -> 409 Conflict
+	_, err = r.ReportResult(j.ID, nodeID, claimed.ExecutionID, JobResult{ExitCode: 0})
+	if err == nil {
+		t.Fatalf("expected conflict for contradictory result")
+	}
+	if err.Error() != "contradictory execution result" {
+		t.Fatalf("expected contradictory error, got: %v", err)
+	}
+
+	// 3. Terminal SUCCEEDED
+	j2 := r.Create("job2", "echo", 0)
+	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+	claimed2, _ := r.Claim(j2.ID, nodeID)
+	r.ReportResult(j2.ID, nodeID, claimed2.ExecutionID, JobResult{ExitCode: 0})
+
+	_, err = r.ReportResult(j2.ID, nodeID, claimed2.ExecutionID, JobResult{ExitCode: 0})
+	if err != nil {
+		t.Fatalf("expected idempotent success for identical success result")
+	}
+
+	_, err = r.ReportResult(j2.ID, nodeID, claimed2.ExecutionID, JobResult{ExitCode: 1})
+	if err == nil || err.Error() != "contradictory execution result" {
+		t.Fatalf("expected contradictory error for SUCCEEDED job receiving failure")
+	}
+}
+
+func TestRegistry_TerminalFencing_WrongNodeID(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job", "exit 1", 0)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	claimed, _ := r.Claim(j.ID, nodeID)
+	r.RecoverExecutionTimeouts(0 * time.Second)
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusFailed {
+		t.Fatalf("expected FAILED, got %s", jAfter.Status)
+	}
+
+	_, err := r.ReportResult(j.ID, "node-wrong", claimed.ExecutionID, JobResult{ExitCode: -1})
+	if err == nil || err.Error() != "stale execution result" {
+		t.Fatalf("expected stale execution result error for wrong nodeID, got: %v", err)
+	}
+	_ = claimed // used above
+}
+
+func TestRegistry_TerminalFencing_WrongExecutionID(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job", "exit 1", 0)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	_, _ = r.Claim(j.ID, nodeID)
+	r.RecoverExecutionTimeouts(0 * time.Second)
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusFailed {
+		t.Fatalf("expected FAILED, got %s", jAfter.Status)
+	}
+
+	_, err := r.ReportResult(j.ID, nodeID, "exec-wrong", JobResult{ExitCode: -1})
+	if err == nil || err.Error() != "stale execution result" {
+		t.Fatalf("expected stale execution result error for wrong executionID, got: %v", err)
+	}
+}
+
+func TestRegistry_TerminalFencing_NoMutation(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job", "exit 1", 0)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	_, _ = r.Claim(j.ID, nodeID)
+	r.RecoverExecutionTimeouts(0 * time.Second)
+
+	// Capture state before rejected result
+	jBefore, _ := r.Get(j.ID)
+	eventsBefore, _ := r.GetEvents(j.ID)
+
+	// Attempt with wrong executionID - should be rejected
+	_, err := r.ReportResult(j.ID, nodeID, "exec-wrong", JobResult{ExitCode: -1})
+	if err == nil {
+		t.Fatalf("expected error for wrong executionID")
+	}
+
+	// Verify no mutation
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != jBefore.Status {
+		t.Fatalf("status was mutated by rejected result")
+	}
+	if jAfter.Attempts != jBefore.Attempts {
+		t.Fatalf("attempts was mutated by rejected result")
+	}
+	if jAfter.ExecutionID != jBefore.ExecutionID {
+		t.Fatalf("executionID was mutated by rejected result")
+	}
+
+	// Verify no new events
+	eventsAfter, _ := r.GetEvents(j.ID)
+	if len(eventsAfter) != len(eventsBefore) {
+		t.Fatalf("events were appended by rejected result")
+	}
+}
+
+func TestRegistry_TerminalFencing_ConcurrentReportResult(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job-concurrent", "echo", 0)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	claimed, _ := r.Claim(j.ID, nodeID)
+	execID := claimed.ExecutionID
+
+	// Multiple goroutines try to report the same result concurrently.
+	// Exactly one should succeed; others should get idempotent success or conflict.
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.ReportResult(j.ID, nodeID, execID, JobResult{ExitCode: 0, Stdout: "ok"})
+		}()
+	}
+	wg.Wait()
+
+	// Job should be exactly SUCCEEDED with one event
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusSucceeded {
+		t.Fatalf("expected SUCCEEDED, got %s", jAfter.Status)
+	}
+
+	events, _ := r.GetEvents(j.ID)
+	succeededCount := 0
+	for _, e := range events {
+		if e.Type == EventSucceeded {
+			succeededCount++
+		}
+	}
+	if succeededCount != 1 {
+		t.Fatalf("expected exactly 1 SUCCEEDED event, got %d", succeededCount)
+	}
+}
+
+func TestRegistry_TerminalFencing_ConcurrentContradictoryResults(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job-concurrent-contradict", "echo", 0)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	claimed, _ := r.Claim(j.ID, nodeID)
+	execID := claimed.ExecutionID
+
+	// First report: succeed
+	_, err := r.ReportResult(j.ID, nodeID, execID, JobResult{ExitCode: 0})
+	if err != nil {
+		t.Fatalf("first report failed: %v", err)
+	}
+
+	// Now concurrently try contradictory results (ExitCode 1) and idempotent (ExitCode 0)
+	// All should either return idempotent success or contradictory error.
+	// None should mutate state.
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.ReportResult(j.ID, nodeID, execID, JobResult{ExitCode: 1, Error: "fail"})
+		}()
+	}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.ReportResult(j.ID, nodeID, execID, JobResult{ExitCode: 0, Stdout: "ok"})
+		}()
+	}
+	wg.Wait()
+
+	// State must be unchanged: still SUCCEEDED with ExitCode 0
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusSucceeded {
+		t.Fatalf("expected SUCCEEDED, got %s", jAfter.Status)
+	}
+	if jAfter.Result == nil || jAfter.Result.ExitCode != 0 {
+		t.Fatalf("expected ExitCode 0, got %v", jAfter.Result)
+	}
+
+	// No additional events beyond the original SUCCEEDED
+	events, _ := r.GetEvents(j.ID)
+	succeededCount := 0
+	for _, e := range events {
+		if e.Type == EventSucceeded {
+			succeededCount++
+		}
+	}
+	if succeededCount != 1 {
+		t.Fatalf("expected exactly 1 SUCCEEDED event, got %d", succeededCount)
+	}
+}
+
+func TestRegistry_TerminalFencing_ContradictoryNoMutation(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job", "exit 1", 0)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	claimed, _ := r.Claim(j.ID, nodeID)
+	r.RecoverExecutionTimeouts(0 * time.Second)
+
+	// Capture state before contradictory result
+	jBefore, _ := r.Get(j.ID)
+	eventsBefore, _ := r.GetEvents(j.ID)
+
+	// Attempt with contradictory exitCode - should be rejected
+	_, err := r.ReportResult(j.ID, nodeID, claimed.ExecutionID, JobResult{ExitCode: 0})
+	if err == nil || err.Error() != "contradictory execution result" {
+		t.Fatalf("expected contradictory execution result error, got: %v", err)
+	}
+
+	// Verify no mutation
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != jBefore.Status {
+		t.Fatalf("status was mutated by rejected result")
+	}
+	if jAfter.Attempts != jBefore.Attempts {
+		t.Fatalf("attempts was mutated by rejected result")
+	}
+
+	// Verify no new events
+	eventsAfter, _ := r.GetEvents(j.ID)
+	if len(eventsAfter) != len(eventsBefore) {
+		t.Fatalf("events were appended by rejected result")
+	}
+}
+
+func TestRegistry_Update_CannotOverwriteStartedAtOnRunning(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	s := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+
+	claimed, _ := r.Claim(j.ID, nodeID)
+	if claimed.Status != StatusRunning {
+		t.Fatalf("expected RUNNING, got %s", claimed.Status)
+	}
+
+	futureTime := time.Now().UTC().Add(1 * time.Hour)
+	_, err := r.Update(j.ID, UpdateParams{StartedAt: &futureTime})
+	if err == nil {
+		t.Fatal("expected error blocking StartedAt overwrite on RUNNING job")
+	}
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.StartedAt.Equal(futureTime) {
+		t.Fatal("StartedAt should not have been overwritten")
+	}
+}
+
+func TestRegistry_Update_CannotManipulateFailedJob(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	s := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+
+	claimed, _ := r.Claim(j.ID, nodeID)
+	r.ReportResult(j.ID, nodeID, claimed.ExecutionID, JobResult{ExitCode: 1, Error: "fail"})
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusFailed {
+		t.Fatalf("expected FAILED, got %s", jAfter.Status)
+	}
+
+	newNode := "node-3"
+	_, err := r.Update(j.ID, UpdateParams{AssignedNodeID: &newNode})
+	if err == nil {
+		t.Fatal("expected error blocking AssignedNodeID overwrite on FAILED job")
+	}
+
+	newResult := &JobResult{ExitCode: 0}
+	_, err = r.Update(j.ID, UpdateParams{Result: newResult})
+	if err == nil {
+		t.Fatal("expected error blocking Result overwrite on FAILED job")
+	}
+
+	newStatus := StatusPending
+	_, err = r.Update(j.ID, UpdateParams{Status: &newStatus})
+	if err == nil {
+		t.Fatal("expected error blocking terminal state change via Update")
+	}
+}
+
+func TestRegistry_Update_AssignedToPendingBlocked(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	s := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+
+	pending := StatusPending
+	_, err := r.Update(j.ID, UpdateParams{Status: &pending})
+	if err == nil {
+		t.Fatal("expected error blocking ASSIGNED→PENDING via Update")
+	}
+}
+
+func TestRegistry_Update_CannotOverwriteAssignedNodeOnRunning(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	s := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+
+	claimed, _ := r.Claim(j.ID, nodeID)
+	if claimed.Status != StatusRunning {
+		t.Fatalf("expected RUNNING, got %s", claimed.Status)
+	}
+
+	newNode := "node-2"
+	_, err := r.Update(j.ID, UpdateParams{AssignedNodeID: &newNode})
+	if err == nil {
+		t.Fatal("expected error blocking AssignedNodeID overwrite on RUNNING job")
+	}
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.AssignedNodeID != "node-1" {
+		t.Fatalf("AssignedNodeID should not have changed, got %s", jAfter.AssignedNodeID)
+	}
+}
+
+func TestRegistry_Update_CannotOverwriteFieldsOnSucceeded(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	s := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+
+	claimed, _ := r.Claim(j.ID, nodeID)
+	r.ReportResult(j.ID, nodeID, claimed.ExecutionID, JobResult{ExitCode: 0})
+
+	newNode := "node-3"
+	_, err := r.Update(j.ID, UpdateParams{AssignedNodeID: &newNode})
+	if err == nil {
+		t.Fatal("expected error blocking AssignedNodeID overwrite on SUCCEEDED job")
+	}
+
+	newResult := &JobResult{ExitCode: 1}
+	_, err = r.Update(j.ID, UpdateParams{Result: newResult})
+	if err == nil {
+		t.Fatal("expected error blocking Result overwrite on SUCCEEDED job")
+	}
+}
+
+// ========================================================================
+// ADVERSARIAL AUDIT REGRESSION TESTS
+// ========================================================================
+
+func TestRegistry_Update_PendingToFailedBlocked(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 1)
+
+	// An adversary must not be able to PATCH a PENDING job to FAILED,
+	// bypassing the entire execution lifecycle.
+	failed := StatusFailed
+	_, err := r.Update(j.ID, UpdateParams{Status: &failed})
+	if err == nil {
+		t.Fatal("expected error blocking PENDING→FAILED via Update")
+	}
+
+	// Verify job remains PENDING
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusPending {
+		t.Fatalf("expected job to remain PENDING, got %s", jAfter.Status)
+	}
+}
+
+func TestRegistry_Update_AssignedToFailedBlocked(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	s := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+
+	// An adversary must not be able to PATCH an ASSIGNED job to FAILED.
+	failed := StatusFailed
+	_, err := r.Update(j.ID, UpdateParams{Status: &failed})
+	if err == nil {
+		t.Fatal("expected error blocking ASSIGNED→FAILED via Update")
+	}
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusAssigned {
+		t.Fatalf("expected job to remain ASSIGNED, got %s", jAfter.Status)
+	}
+}
+
+func TestRegistry_Update_PendingCannotSetAssignedNodeID(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	// Setting AssignedNodeID on a PENDING job without a status change
+	// creates an impossible state invariant (PENDING with assigned node).
+	nodeID := "node-evil"
+	_, err := r.Update(j.ID, UpdateParams{AssignedNodeID: &nodeID})
+	if err == nil {
+		t.Fatal("expected error blocking AssignedNodeID on PENDING job without status transition")
+	}
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.AssignedNodeID != "" {
+		t.Fatalf("expected AssignedNodeID to remain empty, got %s", jAfter.AssignedNodeID)
+	}
+}
+
+func TestRegistry_Update_PendingCannotSetStartedAt(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	now := time.Now().UTC()
+	_, err := r.Update(j.ID, UpdateParams{StartedAt: &now})
+	if err == nil {
+		t.Fatal("expected error blocking StartedAt on PENDING job without status transition")
+	}
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.StartedAt != nil {
+		t.Fatal("expected StartedAt to remain nil")
+	}
+}
+
+func TestRegistry_Update_PendingCannotSetResult(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	result := &JobResult{ExitCode: 0, Stdout: "hacked"}
+	_, err := r.Update(j.ID, UpdateParams{Result: result})
+	if err == nil {
+		t.Fatal("expected error blocking Result on PENDING job without status transition")
+	}
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Result != nil {
+		t.Fatal("expected Result to remain nil")
+	}
+}
+
+func TestRegistry_ReportResult_EmptyNodeID(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	nodeID := "node-1"
+	s := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+	claimed, _ := r.Claim(j.ID, nodeID)
+
+	// Empty nodeID should be rejected as stale (not matching assigned node).
+	_, err := r.ReportResult(j.ID, "", claimed.ExecutionID, JobResult{ExitCode: 0})
+	if err == nil {
+		t.Fatal("expected error for empty nodeID in ReportResult")
+	}
+
+	// Job should remain RUNNING.
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusRunning {
+		t.Fatalf("expected job to remain RUNNING, got %s", jAfter.Status)
+	}
+}
+
+func TestRegistry_ReportResult_EmptyExecutionID(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 0)
+
+	nodeID := "node-1"
+	s := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+	r.Claim(j.ID, nodeID)
+
+	// Empty executionID should be rejected.
+	_, err := r.ReportResult(j.ID, nodeID, "", JobResult{ExitCode: 0})
+	if err == nil {
+		t.Fatal("expected error for empty executionID in ReportResult")
+	}
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusRunning {
+		t.Fatalf("expected job to remain RUNNING, got %s", jAfter.Status)
+	}
+}
+
+func TestRegistry_StaleResult_AllPermutations(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 1)
+
+	nodeID := "node-1"
+	s := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+	claimed, _ := r.Claim(j.ID, nodeID)
+	execID := claimed.ExecutionID
+
+	tests := []struct {
+		name    string
+		nodeID  string
+		execID  string
+		wantErr bool
+	}{
+		{"correct node + correct exec", "node-1", execID, false},
+		{"correct node + wrong exec", "node-1", "exec-wrong", true},
+		{"wrong node + correct exec", "node-wrong", execID, true},
+		{"wrong node + wrong exec", "node-wrong", "exec-wrong", true},
+		{"empty node + correct exec", "", execID, true},
+		{"correct node + empty exec", "node-1", "", true},
+		{"empty node + empty exec", "", "", true},
+	}
+
+	// Report the correct result first
+	_, err := r.ReportResult(j.ID, tests[0].nodeID, tests[0].execID, JobResult{ExitCode: 0})
+	if err != nil {
+		t.Fatalf("first correct report failed: %v", err)
+	}
+
+	// Now test all permutations against the terminal SUCCEEDED state
+	for _, tt := range tests[1:] {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := r.ReportResult(j.ID, tt.nodeID, tt.execID, JobResult{ExitCode: 0})
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error for %s", tt.name)
+			}
+		})
+	}
+
+	// Verify no mutation occurred
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusSucceeded || jAfter.Attempts != 1 {
+		t.Fatalf("state mutated by rejected results: status=%s attempts=%d", jAfter.Status, jAfter.Attempts)
+	}
+
+	events, _ := r.GetEvents(j.ID)
+	succeededCount := 0
+	for _, e := range events {
+		if e.Type == EventSucceeded {
+			succeededCount++
+		}
+	}
+	if succeededCount != 1 {
+		t.Fatalf("expected exactly 1 SUCCEEDED event, got %d", succeededCount)
+	}
+}
+
+func TestRegistry_RecoveryDoesNotIncrementAttempts(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo", 2)
+
+	nodeID := "node-1"
+	s := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+	claimed, _ := r.Claim(j.ID, nodeID)
+
+	if claimed.Attempts != 1 {
+		t.Fatalf("expected Attempts=1 after claim, got %d", claimed.Attempts)
+	}
+
+	// Recovery should NOT increment attempts
+	r.RecoverExecutionTimeouts(0 * time.Second)
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Status != StatusPending {
+		t.Fatalf("expected PENDING after recovery, got %s", jAfter.Status)
+	}
+	if jAfter.Attempts != 1 {
+		t.Fatalf("recovery should not change Attempts, expected 1 got %d", jAfter.Attempts)
+	}
+
+	// Node recovery also should not increment attempts
+	r.Update(j.ID, UpdateParams{Status: &s, AssignedNodeID: &nodeID})
+	r.Claim(j.ID, nodeID) // Attempts becomes 2
+
+	r.RecoverNodeJobs(nodeID, "test recovery")
+
+	jAfter2, _ := r.Get(j.ID)
+	if jAfter2.Attempts != 2 {
+		t.Fatalf("node recovery should not change Attempts, expected 2 got %d", jAfter2.Attempts)
+	}
+}

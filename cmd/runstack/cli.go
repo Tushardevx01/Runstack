@@ -532,7 +532,13 @@ func createJob(args []string) error {
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--max-retries" {
 			if i+1 < len(args) {
-				fmt.Sscanf(args[i+1], "%d", &maxRetries)
+				n, err := fmt.Sscanf(args[i+1], "%d", &maxRetries)
+				if n != 1 || err != nil {
+					return fmt.Errorf("invalid --max-retries value: %s", args[i+1])
+				}
+				if maxRetries < 0 {
+					return fmt.Errorf("--max-retries must be non-negative")
+				}
 				i++
 			}
 		} else if args[i] == "--name" {

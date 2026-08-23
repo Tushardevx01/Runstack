@@ -58,6 +58,16 @@ func TestJobHandler_CreateInvalid(t *testing.T) {
 	if w.Result().StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 Bad Request, got %d", w.Result().StatusCode)
 	}
+
+	// Negative maxRetries
+	reqBody = `{"name": "test-job", "command": "echo test", "maxRetries": -1}`
+	req = httptest.NewRequest("POST", "/api/v1/jobs", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.Create(w, req)
+	if w.Result().StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for negative maxRetries, got %d", w.Result().StatusCode)
+	}
 }
 
 func TestJobHandler_Claim(t *testing.T) {
@@ -157,5 +167,86 @@ func TestJobHandler_GetEvents(t *testing.T) {
 
 	if len(resp["events"]) != 1 || resp["events"][0].Type != job.EventCreated {
 		t.Errorf("expected exactly 1 CREATED event")
+	}
+}
+
+// ========================================================================
+// ADVERSARIAL AUDIT REGRESSION TESTS
+// ========================================================================
+
+func TestJobHandler_ReportResult_EmptyNodeID(t *testing.T) {
+	nodeRegistry := node.NewRegistry()
+	jobRegistry := job.NewRegistry()
+	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
+
+	nodeRegistry.Register(node.Node{ID: "node-1"})
+	j := jobRegistry.Create("test", "echo 1", 0)
+
+	status := job.StatusAssigned
+	nodeID := "node-1"
+	jobRegistry.Update(j.ID, job.UpdateParams{Status: &status, AssignedNodeID: &nodeID})
+	claimed, _ := jobRegistry.Claim(j.ID, "node-1")
+
+	// Empty nodeId should return 400, not reach the registry
+	reqBody := fmt.Sprintf(`{"nodeId": "", "executionId": "%s", "result": {"exitCode": 0}}`, claimed.ExecutionID)
+	req := httptest.NewRequest("POST", "/api/v1/jobs/"+j.ID+"/result", bytes.NewBufferString(reqBody))
+	req.SetPathValue("id", j.ID)
+	w := httptest.NewRecorder()
+
+	handler.ReportResult(w, req)
+
+	if w.Result().StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for empty nodeId, got %d", w.Result().StatusCode)
+	}
+}
+
+func TestJobHandler_ReportResult_EmptyExecutionID(t *testing.T) {
+	nodeRegistry := node.NewRegistry()
+	jobRegistry := job.NewRegistry()
+	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
+
+	nodeRegistry.Register(node.Node{ID: "node-1"})
+	j := jobRegistry.Create("test", "echo 1", 0)
+
+	status := job.StatusAssigned
+	nodeID := "node-1"
+	jobRegistry.Update(j.ID, job.UpdateParams{Status: &status, AssignedNodeID: &nodeID})
+	jobRegistry.Claim(j.ID, "node-1")
+
+	// Empty executionId should return 400
+	reqBody := `{"nodeId": "node-1", "executionId": "", "result": {"exitCode": 0}}`
+	req := httptest.NewRequest("POST", "/api/v1/jobs/"+j.ID+"/result", bytes.NewBufferString(reqBody))
+	req.SetPathValue("id", j.ID)
+	w := httptest.NewRecorder()
+
+	handler.ReportResult(w, req)
+
+	if w.Result().StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for empty executionId, got %d", w.Result().StatusCode)
+	}
+}
+
+func TestJobHandler_Update_PendingToFailed_Blocked(t *testing.T) {
+	nodeRegistry := node.NewRegistry()
+	jobRegistry := job.NewRegistry()
+	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
+
+	j := jobRegistry.Create("test", "echo 1", 0)
+
+	reqBody := `{"status": "failed"}`
+	req := httptest.NewRequest("PATCH", "/api/v1/jobs/"+j.ID, bytes.NewBufferString(reqBody))
+	req.SetPathValue("id", j.ID)
+	w := httptest.NewRecorder()
+
+	handler.Update(w, req)
+
+	// Should not be 200 OK — this transition must be blocked
+	if w.Result().StatusCode == http.StatusOK {
+		t.Errorf("expected PENDING→FAILED to be blocked via API, but got 200 OK")
+	}
+
+	jAfter, _ := jobRegistry.Get(j.ID)
+	if jAfter.Status != job.StatusPending {
+		t.Fatalf("expected job to remain PENDING, got %s", jAfter.Status)
 	}
 }

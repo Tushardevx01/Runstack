@@ -54,6 +54,11 @@ func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.MaxRetries < 0 {
+		http.Error(w, "maxRetries must be non-negative", http.StatusBadRequest)
+		return
+	}
+
 	j := h.Registry.Create(req.Name, req.Command, req.MaxRetries)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -190,8 +195,8 @@ func (h *JobHandler) ReportResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.ExecutionID == "" {
-		http.Error(w, "executionId is required", http.StatusBadRequest)
+	if req.NodeID == "" || req.ExecutionID == "" {
+		http.Error(w, "nodeId and executionId are required", http.StatusBadRequest)
 		return
 	}
 

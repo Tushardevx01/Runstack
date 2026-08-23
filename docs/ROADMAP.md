@@ -20,11 +20,11 @@
 
 - [x] Job Event History (in-memory)
 - [x] Node-aware failure recovery
-- [ ] Automatic rescheduling for dead nodes
+- [x] Automatic rescheduling for dead nodes
 - [x] Execution timeouts
 - [x] Execution ownership and result fencing
 - [x] Retry policy specification
-- [ ] Agent crash recovery
+- [x] Agent crash recovery (via execution timeout and node offline detection)
 
 ## Future
 
@@ -37,7 +37,8 @@
 - [ ] Load-aware scheduling (CPU/Memory tracking)
 - [ ] Capability-aware scheduling (e.g. requiring Docker)
 - [ ] Resource-aware scheduling limits
-- [ ] Multiple scheduler strategies (Random, Round-robin, Least-loaded)
+- [x] Deterministic round-robin scheduling
+- [ ] Multiple scheduler strategies (Random, Least-loaded)
 
 ### Execution
 - [ ] Concurrent agent workers (parallel execution)

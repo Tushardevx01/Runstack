@@ -99,6 +99,8 @@ Agents cannot arbitrarily transition an `ASSIGNED` job to `RUNNING` on their own
 
 The `ExecutionID` acts as a cryptographically random fencing token. When the agent finishes executing the job, it must provide the `ExecutionID` back to the Control Plane. If the job was recovered and reassigned while the agent was disconnected, the Control Plane will reject the stale agent's result, providing strict execution-aware result fencing.
 
+Terminal states additionally enforce *semantic fencing*: a legitimate duplicate result (same execution, same exit code) is accepted idempotently, while a contradictory result (same execution, different exit code) is explicitly rejected.
+
 
 ### 4. Retry Budget and Bounded Executions
 All failures—both application (`ExitCode != 0`) and infrastructure (node timeouts)—are evaluated against a bounded `MaxRetries` limit configured at job creation. The `Attempts` counter increments upon `Claim`. If `Attempts <= MaxRetries` after a failure occurs, the Control Plane safely clears the `ExecutionID` and transitions the job to `PENDING` for reassignment. If the budget is exhausted (`Attempts > MaxRetries`), it reaches the terminal `FAILED` state, mathematically preventing infinite infrastructure recovery loops.
@@ -112,5 +114,7 @@ The current architecture is intentionally simplified to provide a reliable found
 - **`strings.Fields()` Parsing:** Commands are split into arguments purely by spaces. Quoted shell arguments (`echo "hello world"`) are not supported. This avoids invoking arbitrary shell interpreters (like `/bin/sh`) which reduces injection risks.
 - **No Agent Web Server:** The Agent does not listen for incoming connections. All interaction is via the Agent polling the Control Plane.
 - **Control Plane as Source of Truth:** Agents never own their state. They cannot unilaterally execute; they must `Claim`.
-- **First-Online-Node Scheduling:** The Scheduler deterministically picks the first `ONLINE` node. It is not resource-aware yet.
-- **No Leases or Rescheduling:** If an Agent dies while `RUNNING` a job, the job is stranded. There are no timeouts or retries.
+- **Deterministic Round-Robin Scheduling:** The Scheduler distributes jobs across sorted ONLINE nodes in round-robin order using a persistent cursor. It is not resource-aware.
+- **Bounded Retry Budget:** All failures (application and infrastructure) are evaluated against `MaxRetries`. Maximum total executions = `MaxRetries + 1`.
+- **No Exactly-Once Execution:** Network partitions can result in duplicate physical execution. The system provides execution-aware *result fencing* but not physical execution prevention.
+- **Update() API Hardened:** The PATCH endpoint cannot bypass domain invariants. Terminal transitions (`PENDING→FAILED`, `ASSIGNED→FAILED`) and execution field manipulation are blocked through the public API.
