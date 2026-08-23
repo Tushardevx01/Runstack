@@ -80,3 +80,71 @@ func TestRegistry_Concurrent(t *testing.T) {
 		t.Errorf("expected 100 jobs")
 	}
 }
+
+func TestRegistry_Claim(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo 1")
+
+	// Cannot claim PENDING job
+	_, err := r.Claim(j.ID, "node-1")
+	if err != ErrInvalidTransition {
+		t.Errorf("expected ErrInvalidTransition, got %v", err)
+	}
+
+	// Update to ASSIGNED
+	status := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &status, AssignedNodeID: &nodeID})
+
+	// Claim with wrong node
+	_, err = r.Claim(j.ID, "node-2")
+	if err == nil {
+		t.Errorf("expected error when claiming with wrong node")
+	}
+
+	// Successful claim
+	claimed, err := r.Claim(j.ID, "node-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if claimed.Status != StatusRunning || claimed.StartedAt == nil {
+		t.Errorf("expected status RUNNING and StartedAt set")
+	}
+}
+
+func TestRegistry_ReportResult(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test", "echo 1")
+
+	status := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &status, AssignedNodeID: &nodeID})
+	r.Claim(j.ID, "node-1")
+
+	res := JobResult{ExitCode: 0, Stdout: "done"}
+
+	// Report with wrong node
+	_, err := r.ReportResult(j.ID, "node-2", res)
+	if err == nil {
+		t.Errorf("expected error when reporting with wrong node")
+	}
+
+	// Successful report
+	finished, err := r.ReportResult(j.ID, "node-1", res)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if finished.Status != StatusSucceeded || finished.CompletedAt == nil || finished.Result.Stdout != "done" {
+		t.Errorf("expected status SUCCEEDED and Result set, got %+v", finished)
+	}
+
+	// Failure report
+	j2 := r.Create("fail", "exit 1")
+	r.Update(j2.ID, UpdateParams{Status: &status, AssignedNodeID: &nodeID})
+	r.Claim(j2.ID, "node-1")
+
+	failed, _ := r.ReportResult(j2.ID, "node-1", JobResult{ExitCode: 1, Error: "fail"})
+	if failed.Status != StatusFailed {
+		t.Errorf("expected status FAILED")
+	}
+}

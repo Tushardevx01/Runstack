@@ -1,6 +1,7 @@
 package job
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
@@ -61,7 +62,7 @@ type UpdateParams struct {
 	AssignedNodeID *string
 	StartedAt      *time.Time
 	CompletedAt    *time.Time
-	Result         *string
+	Result         *JobResult
 }
 
 func (r *Registry) Update(id string, params UpdateParams) (*Job, error) {
@@ -90,8 +91,70 @@ func (r *Registry) Update(id string, params UpdateParams) (*Job, error) {
 		j.CompletedAt = params.CompletedAt
 	}
 	if params.Result != nil {
-		j.Result = *params.Result
+		j.Result = params.Result
 	}
+
+	jobCopy := *j
+	return &jobCopy, nil
+}
+
+func (r *Registry) Claim(id, nodeID string) (*Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	j, ok := r.jobs[id]
+	if !ok {
+		return nil, ErrJobNotFound
+	}
+
+	if j.Status != StatusAssigned {
+		return nil, ErrInvalidTransition
+	}
+	if j.AssignedNodeID != nodeID {
+		return nil, errors.New("job assigned to another node")
+	}
+
+	now := time.Now().UTC()
+	j.Status = StatusRunning
+	j.StartedAt = &now
+
+	jobCopy := *j
+	return &jobCopy, nil
+}
+
+func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	j, ok := r.jobs[id]
+	if !ok {
+		return nil, ErrJobNotFound
+	}
+
+	// Idempotency: if already succeeded or failed by this node, accept it without modifying again.
+	if j.Status == StatusSucceeded || j.Status == StatusFailed {
+		if j.AssignedNodeID != nodeID {
+			return nil, errors.New("job assigned to another node")
+		}
+		jobCopy := *j
+		return &jobCopy, nil
+	}
+
+	if j.Status != StatusRunning {
+		return nil, ErrInvalidTransition
+	}
+	if j.AssignedNodeID != nodeID {
+		return nil, errors.New("job assigned to another node")
+	}
+
+	now := time.Now().UTC()
+	if res.ExitCode == 0 {
+		j.Status = StatusSucceeded
+	} else {
+		j.Status = StatusFailed
+	}
+	j.CompletedAt = &now
+	j.Result = &res
 
 	jobCopy := *j
 	return &jobCopy, nil

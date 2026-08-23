@@ -62,7 +62,7 @@ func main() {
 	nodeHandler := &api.NodeHandler{Registry: registry}
 
 	jobRegistry := job.NewRegistry()
-	jobHandler := &api.JobHandler{Registry: jobRegistry}
+	jobHandler := &api.JobHandler{Registry: jobRegistry, NodeRegistry: registry}
 
 	sched := scheduler.New(registry, jobRegistry)
 
@@ -99,6 +99,8 @@ func main() {
 	mux.HandleFunc("GET /api/v1/jobs", jobHandler.List)
 	mux.HandleFunc("GET /api/v1/jobs/{id}", jobHandler.Get)
 	mux.HandleFunc("PATCH /api/v1/jobs/{id}", jobHandler.Update)
+	mux.HandleFunc("POST /api/v1/jobs/{id}/claim", jobHandler.Claim)
+	mux.HandleFunc("POST /api/v1/jobs/{id}/result", jobHandler.ReportResult)
 
 	server := &http.Server{
 		Addr:              ":8080",

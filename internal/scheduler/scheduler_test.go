@@ -84,7 +84,7 @@ func TestScheduler_PendingJob_OneOnlineNode(t *testing.T) {
 	if jAfter.AssignedNodeID != "node-1" {
 		t.Errorf("expected job assigned to node-1")
 	}
-	if jAfter.StartedAt != nil || jAfter.CompletedAt != nil || jAfter.Result != "" {
+	if jAfter.StartedAt != nil || jAfter.CompletedAt != nil || jAfter.Result != nil {
 		t.Errorf("expected execution fields to remain unset")
 	}
 }

@@ -22,6 +22,13 @@ var (
 	ErrJobNotFound       = errors.New("job not found")
 )
 
+type JobResult struct {
+	ExitCode int    `json:"exitCode"`
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
+	Error    string `json:"error,omitempty"`
+}
+
 type Job struct {
 	ID             string     `json:"id"`
 	Name           string     `json:"name"`
@@ -31,7 +38,7 @@ type Job struct {
 	StartedAt      *time.Time `json:"startedAt,omitempty"`
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 	AssignedNodeID string     `json:"assignedNodeId,omitempty"`
-	Result         string     `json:"result,omitempty"`
+	Result         *JobResult `json:"result,omitempty"`
 }
 
 func isValidTransition(current, next Status) bool {

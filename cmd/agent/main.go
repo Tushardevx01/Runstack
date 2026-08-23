@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/Tushardevx01/runstack/internal/node"
@@ -122,16 +125,36 @@ func main() {
 		break
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		log.Println("Shutting down agent...")
+		cancel()
+	}()
+
 	log.Println("Heartbeat started")
 
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
 
-	for range ticker.C {
-		if err := sendHeartbeat(nodeID); err != nil {
-			log.Printf("Heartbeat failed: %v", err)
-		} else {
-			log.Println("Heartbeat sent")
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := sendHeartbeat(nodeID); err != nil {
+					log.Printf("Heartbeat failed: %v", err)
+				} else {
+					log.Println("Heartbeat sent")
+				}
+			}
 		}
-	}
+	}()
+
+	startJobPolling(ctx, nodeID)
 }

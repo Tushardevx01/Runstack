@@ -230,11 +230,20 @@ func getJob(id string) error {
 	}
 	fmt.Printf("Assigned Node: %s\n", nodeStr)
 
-	resStr := j.Result
-	if resStr == "" {
-		resStr = "-"
+	resStr := "-"
+	if j.Result != nil {
+		resStr = fmt.Sprintf("ExitCode: %d", j.Result.ExitCode)
+		if j.Result.Error != "" {
+			resStr += fmt.Sprintf(", Error: %s", j.Result.Error)
+		}
 	}
 	fmt.Printf("Result:        %s\n", resStr)
+
+	if j.Result != nil {
+		fmt.Println("-------------------------")
+		fmt.Printf("Stdout:\n%s\n", j.Result.Stdout)
+		fmt.Printf("Stderr:\n%s\n", j.Result.Stderr)
+	}
 
 	return nil
 }

@@ -6,10 +6,12 @@ import (
 	"time"
 
 	"github.com/Tushardevx01/runstack/internal/job"
+	"github.com/Tushardevx01/runstack/internal/node"
 )
 
 type JobHandler struct {
-	Registry *job.Registry
+	Registry     *job.Registry
+	NodeRegistry *node.Registry
 }
 
 type CreateJobRequest struct {
@@ -18,15 +20,24 @@ type CreateJobRequest struct {
 }
 
 type UpdateJobRequest struct {
-	Status         *job.Status `json:"status,omitempty"`
-	AssignedNodeID *string     `json:"assignedNodeId,omitempty"`
-	StartedAt      *time.Time  `json:"startedAt,omitempty"`
-	CompletedAt    *time.Time  `json:"completedAt,omitempty"`
-	Result         *string     `json:"result,omitempty"`
+	Status         *job.Status    `json:"status,omitempty"`
+	AssignedNodeID *string        `json:"assignedNodeId,omitempty"`
+	StartedAt      *time.Time     `json:"startedAt,omitempty"`
+	CompletedAt    *time.Time     `json:"completedAt,omitempty"`
+	Result         *job.JobResult `json:"result,omitempty"`
 }
 
 type ListJobsResponse struct {
 	Jobs []job.Job `json:"jobs"`
+}
+
+type ClaimRequest struct {
+	NodeID string `json:"nodeId"`
+}
+
+type ReportResultRequest struct {
+	NodeID string        `json:"nodeId"`
+	Result job.JobResult `json:"result"`
 }
 
 func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -49,10 +60,29 @@ func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *JobHandler) List(w http.ResponseWriter, r *http.Request) {
-	jobs := h.Registry.List()
+	nodeID := r.URL.Query().Get("assignedNodeId")
+	status := r.URL.Query().Get("status")
+
+	allJobs := h.Registry.List()
+	var filtered []job.Job
+
+	for _, j := range allJobs {
+		if nodeID != "" && j.AssignedNodeID != nodeID {
+			continue
+		}
+		if status != "" && string(j.Status) != status {
+			continue
+		}
+		filtered = append(filtered, j)
+	}
+
+	if filtered == nil {
+		filtered = make([]job.Job, 0)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ListJobsResponse{
-		Jobs: jobs,
+		Jobs: filtered,
 	})
 }
 
@@ -92,6 +122,62 @@ func (h *JobHandler) Update(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid status transition", http.StatusBadRequest)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(j)
+}
+
+func (h *JobHandler) Claim(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req ClaimRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "malformed JSON", http.StatusBadRequest)
+		return
+	}
+
+	n, err := h.NodeRegistry.Get(req.NodeID)
+	if err != nil || n.Status != node.StatusOnline {
+		http.Error(w, "node not online or not found", http.StatusForbidden)
+		return
+	}
+
+	j, err := h.Registry.Claim(id, req.NodeID)
+	if err != nil {
+		if err == job.ErrJobNotFound {
+			http.Error(w, "Not Found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusConflict)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(j)
+}
+
+func (h *JobHandler) ReportResult(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req ReportResultRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "malformed JSON", http.StatusBadRequest)
+		return
+	}
+
+	_, err := h.NodeRegistry.Get(req.NodeID)
+	if err != nil {
+		http.Error(w, "node not found", http.StatusForbidden)
+		return
+	}
+
+	j, err := h.Registry.ReportResult(id, req.NodeID, req.Result)
+	if err != nil {
+		if err == job.ErrJobNotFound {
+			http.Error(w, "Not Found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusConflict)
 		}
 		return
 	}
