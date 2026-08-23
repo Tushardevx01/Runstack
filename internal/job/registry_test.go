@@ -26,7 +26,7 @@ func TestJob_Transitions(t *testing.T) {
 
 func TestRegistry_Create(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test-job", "echo test")
+	j := r.Create("test-job", "echo test", 0)
 	if j.Name != "test-job" || j.Status != StatusPending {
 		t.Errorf("unexpected job creation state")
 	}
@@ -34,7 +34,7 @@ func TestRegistry_Create(t *testing.T) {
 
 func TestRegistry_Update(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test-job", "echo test")
+	j := r.Create("test-job", "echo test", 0)
 
 	newStatus := StatusAssigned
 	nodeID := "node-1"
@@ -68,7 +68,7 @@ func TestRegistry_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			j := r.Create("concurrent-job", "echo")
+			j := r.Create("concurrent-job", "echo", 0)
 
 			s := StatusAssigned
 			r.Update(j.ID, UpdateParams{Status: &s})
@@ -85,7 +85,7 @@ func TestRegistry_Concurrent(t *testing.T) {
 
 func TestRegistry_Claim(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo 1")
+	j := r.Create("test", "echo 1", 0)
 
 	// Cannot claim PENDING job
 	_, err := r.Claim(j.ID, "node-1")
@@ -117,7 +117,7 @@ func TestRegistry_Claim(t *testing.T) {
 func TestRegistry_ReportResult(t *testing.T) {
 	r := NewRegistry()
 
-	j := r.Create("test-job", "echo test")
+	j := r.Create("test-job", "echo test", 0)
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
 	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
@@ -151,7 +151,7 @@ func TestRegistry_ReportResult(t *testing.T) {
 	}
 
 	// Test failing result
-	j2 := r.Create("test-fail", "exit 1")
+	j2 := r.Create("test-fail", "exit 1", 0)
 	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 	claimed2, _ := r.Claim(j2.ID, "node-1")
 	execID2 := claimed2.ExecutionID
@@ -164,7 +164,7 @@ func TestRegistry_ReportResult(t *testing.T) {
 
 func TestRegistry_EventHistory(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test-events", "echo 1")
+	j := r.Create("test-events", "echo 1", 0)
 
 	events, err := r.GetEvents(j.ID)
 	if err != nil {
@@ -221,7 +221,7 @@ func TestRegistry_EventHistory(t *testing.T) {
 
 func TestRegistry_EventHistory_Failure(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test-events", "echo 1")
+	j := r.Create("test-events", "echo 1", 0)
 
 	statusAssigned := StatusAssigned
 	nodeID := "node-1"
@@ -238,9 +238,9 @@ func TestRegistry_EventHistory_Failure(t *testing.T) {
 
 func TestRegistry_RecoverExecutionTimeouts(t *testing.T) {
 	r := NewRegistry()
-	j1 := r.Create("job1", "echo 1")
-	j2 := r.Create("job2", "echo 2")
-	j3 := r.Create("job3", "echo 3")
+	j1 := r.Create("job1", "echo 1", 1)
+	j2 := r.Create("job2", "echo 2", 1)
+	j3 := r.Create("job3", "echo 3", 1)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -309,7 +309,7 @@ func TestRegistry_RecoverExecutionTimeouts(t *testing.T) {
 
 func TestRegistry_RecoverExecutionTimeouts_MissingStartedAt(t *testing.T) {
 	r := NewRegistry()
-	j1 := r.Create("job1", "echo 1")
+	j1 := r.Create("job1", "echo 1", 1)
 
 	r.mu.Lock()
 	r.jobs[j1.ID].Status = StatusRunning
@@ -325,8 +325,8 @@ func TestRegistry_RecoverExecutionTimeouts_MissingStartedAt(t *testing.T) {
 
 func TestRegistry_RecoverExecutionTimeouts_WrongState(t *testing.T) {
 	r := NewRegistry()
-	jAssigned := r.Create("jobAssigned", "echo a")
-	jFailed := r.Create("jobFailed", "echo f")
+	jAssigned := r.Create("jobAssigned", "echo a", 0)
+	jFailed := r.Create("jobFailed", "echo f", 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -349,7 +349,7 @@ func TestRegistry_RecoverExecutionTimeouts_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := 0; i < 100; i++ {
-		j := r.Create(fmt.Sprintf("job-%d", i), "echo")
+		j := r.Create(fmt.Sprintf("job-%d", i), "echo", 1)
 		statusAssigned := StatusAssigned
 		r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 		j, _ = r.Claim(j.ID, nodeID)
@@ -373,9 +373,9 @@ func TestRegistry_RecoverExecutionTimeouts_Concurrency(t *testing.T) {
 
 func TestRegistry_RecoverNodeJobs(t *testing.T) {
 	r := NewRegistry()
-	j1 := r.Create("job1", "echo 1") // assigned and running on node-1
-	j2 := r.Create("job2", "echo 2") // assigned on node-1, not running
-	j3 := r.Create("job3", "echo 3") // assigned and running on node-2
+	j1 := r.Create("job1", "echo 1", 1) // assigned and running on node-1
+	j2 := r.Create("job2", "echo 2", 1) // assigned on node-1, not running
+	j3 := r.Create("job3", "echo 3", 1) // assigned and running on node-2
 
 	node1 := "node-1"
 	node2 := "node-2"
@@ -413,5 +413,90 @@ func TestRegistry_RecoverNodeJobs(t *testing.T) {
 	recoveredAgain := r.RecoverNodeJobs(node1, "node offline")
 	if recoveredAgain != 0 {
 		t.Fatalf("expected 0 recovered on retry, got %d", recoveredAgain)
+	}
+}
+
+func TestRegistry_RetryBudget_MaxRetries0(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job", "exit 1", 0)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	j, _ = r.Claim(j.ID, nodeID)
+	if j.Attempts != 1 {
+		t.Fatalf("expected Attempts = 1, got %d", j.Attempts)
+	}
+
+	j, _ = r.ReportResult(j.ID, nodeID, j.ExecutionID, JobResult{ExitCode: 1})
+	if j.Status != StatusFailed {
+		t.Fatalf("expected FAILED, got %s", j.Status)
+	}
+}
+
+func TestRegistry_RetryBudget_MaxRetries1(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job", "exit 1", 1)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	// Attempt 1
+	j, _ = r.Claim(j.ID, nodeID)
+	if j.Attempts != 1 {
+		t.Fatalf("expected Attempts = 1, got %d", j.Attempts)
+	}
+	j, _ = r.ReportResult(j.ID, nodeID, j.ExecutionID, JobResult{ExitCode: 1})
+	if j.Status != StatusPending {
+		t.Fatalf("expected PENDING, got %s", j.Status)
+	}
+
+	// Attempt 2
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+	j, _ = r.Claim(j.ID, nodeID)
+	if j.Attempts != 2 {
+		t.Fatalf("expected Attempts = 2, got %d", j.Attempts)
+	}
+	j, _ = r.ReportResult(j.ID, nodeID, j.ExecutionID, JobResult{ExitCode: 1})
+	if j.Status != StatusFailed {
+		t.Fatalf("expected FAILED, got %s", j.Status)
+	}
+}
+
+func TestRegistry_StaleResult_NoMutation(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("job", "exit 1", 1)
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	// Attempt 1
+	claimed1, _ := r.Claim(j.ID, nodeID)
+
+	// Recover it (simulate timeout)
+	r.RecoverExecutionTimeouts(0 * time.Second)
+
+	// Attempt 2
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+	claimed2, _ := r.Claim(j.ID, nodeID)
+
+	// Stale result for Attempt 1
+	_, err := r.ReportResult(j.ID, nodeID, claimed1.ExecutionID, JobResult{ExitCode: 0})
+	if err == nil {
+		t.Fatalf("expected stale result to be rejected")
+	}
+
+	jAfter, _ := r.Get(j.ID)
+	if jAfter.Attempts != 2 {
+		t.Fatalf("stale result should not affect Attempts")
+	}
+
+	// Valid result for Attempt 2
+	_, err = r.ReportResult(j.ID, nodeID, claimed2.ExecutionID, JobResult{ExitCode: 0})
+	if err != nil {
+		t.Fatalf("valid result failed: %v", err)
 	}
 }

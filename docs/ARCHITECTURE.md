@@ -99,6 +99,10 @@ Agents cannot arbitrarily transition an `ASSIGNED` job to `RUNNING` on their own
 
 The `ExecutionID` acts as a cryptographically random fencing token. When the agent finishes executing the job, it must provide the `ExecutionID` back to the Control Plane. If the job was recovered and reassigned while the agent was disconnected, the Control Plane will reject the stale agent's result, providing strict execution-aware result fencing.
 
+
+### 4. Retry Budget and Bounded Executions
+All failures—both application (`ExitCode != 0`) and infrastructure (node timeouts)—are evaluated against a bounded `MaxRetries` limit configured at job creation. The `Attempts` counter increments upon `Claim`. If `Attempts <= MaxRetries` after a failure occurs, the Control Plane safely clears the `ExecutionID` and transitions the job to `PENDING` for reassignment. If the budget is exhausted (`Attempts > MaxRetries`), it reaches the terminal `FAILED` state, mathematically preventing infinite infrastructure recovery loops.
+
 ## V1 Architectural Limitations
 
 The current architecture is intentionally simplified to provide a reliable foundation. The following constraints must be preserved until explicitly addressed in future milestones:

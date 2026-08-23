@@ -46,6 +46,17 @@ Introduced `ExecutionID` to decouple job identity from execution attempts.
 - Recovering a job clears its active `ExecutionID`, guaranteeing the next claim generates a fresh identity.
 - V1 does NOT guarantee exactly-once execution, but provides execution-aware result fencing. The old execution attempt is permanently archived in the event history.
 
+
+### Milestone 6D: Retry Policy & Attempt Tracking
+Introduced strict, bounded retry accounting via `Attempts` and `MaxRetries`.
+- `Attempts` is incremented exactly once upon `Claim` (transition to `RUNNING`).
+- Maximum total executions allowed is `MaxRetries + 1`.
+- If an application failure (`ExitCode != 0`) or an infrastructure failure (node crash, execution timeout) occurs:
+  - If `Attempts <= MaxRetries`, the job cleanly transitions to `PENDING` (discarding execution identity) for a retry.
+  - If `Attempts > MaxRetries`, the job reaches the terminal `FAILED` state.
+- Stale result fencing securely guards against false attempt counting.
+- Infrastructure recovery and application failure semantics are completely harmonized into this single retry budget.
+
 ## Current Job Lifecycle
 
 ```text

@@ -39,6 +39,8 @@ type Job struct {
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 	AssignedNodeID string     `json:"assignedNodeId,omitempty"`
 	ExecutionID    string     `json:"executionId,omitempty"`
+	MaxRetries     int        `json:"maxRetries"`
+	Attempts       int        `json:"attempts"`
 	Result         *JobResult `json:"result,omitempty"`
 }
 
@@ -51,6 +53,7 @@ const (
 	EventSucceeded JobEventType = "SUCCEEDED"
 	EventFailed    JobEventType = "FAILED"
 	EventRecovered JobEventType = "RECOVERED"
+	EventRetried   JobEventType = "RETRIED"
 )
 
 type JobEvent struct {
@@ -62,6 +65,7 @@ type JobEvent struct {
 	To          Status       `json:"to"`
 	NodeID      string       `json:"nodeId,omitempty"`
 	ExecutionID string       `json:"executionId,omitempty"`
+	Attempts    int          `json:"attempts,omitempty"`
 	Reason      string       `json:"reason,omitempty"`
 }
 

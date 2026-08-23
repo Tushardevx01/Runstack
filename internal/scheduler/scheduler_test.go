@@ -30,7 +30,7 @@ func TestScheduler_NoNodes(t *testing.T) {
 	jR := job.NewRegistry()
 	s := New(nR, jR)
 
-	j := jR.Create("test", "echo 1")
+	j := jR.Create("test", "echo 1", 0)
 
 	if err := s.SchedulePendingJobs(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -47,7 +47,7 @@ func TestScheduler_PendingJob_NoOnlineNode(t *testing.T) {
 	jR := job.NewRegistry()
 	s := New(nR, jR)
 
-	j := jR.Create("test", "echo 1")
+	j := jR.Create("test", "echo 1", 0)
 	nR.Register(node.Node{ID: "node-1", Status: node.StatusOffline})
 
 	// Override last heartbeat to ensure it's marked offline in our tests if needed
@@ -70,7 +70,7 @@ func TestScheduler_PendingJob_OneOnlineNode(t *testing.T) {
 	jR := job.NewRegistry()
 	s := New(nR, jR)
 
-	j := jR.Create("test", "echo 1")
+	j := jR.Create("test", "echo 1", 0)
 	nR.Register(node.Node{ID: "node-1"})
 
 	if err := s.SchedulePendingJobs(); err != nil {
@@ -98,8 +98,8 @@ func TestScheduler_DeterministicSelection(t *testing.T) {
 	nR.Register(node.Node{ID: "node-A"})
 	nR.Register(node.Node{ID: "node-B"})
 
-	j1 := jR.Create("test-1", "echo 1")
-	j2 := jR.Create("test-2", "echo 2")
+	j1 := jR.Create("test-1", "echo 1", 0)
+	j2 := jR.Create("test-2", "echo 2", 0)
 
 	s.SchedulePendingJobs()
 
@@ -118,7 +118,7 @@ func TestScheduler_IgnoreAssignedJobs(t *testing.T) {
 
 	nR.Register(node.Node{ID: "node-A"})
 
-	j := jR.Create("test", "echo 1")
+	j := jR.Create("test", "echo 1", 0)
 
 	status := job.StatusAssigned
 	nodeID := "node-other"
@@ -144,7 +144,7 @@ func TestScheduler_Concurrent(t *testing.T) {
 
 	// Create 100 jobs
 	for i := 0; i < 100; i++ {
-		jR.Create("test", "echo 1")
+		jR.Create("test", "echo 1", 0)
 	}
 
 	// Schedule concurrently
@@ -175,7 +175,7 @@ func TestScheduler_StaleRecovery(t *testing.T) {
 
 	nodeReg.Register(node.Node{ID: "node-1"})
 
-	j1 := jobReg.Create("stale-job", "echo stale")
+	j1 := jobReg.Create("stale-job", "echo stale", 0)
 
 	// Force it to be ASSIGNED, then RUNNING and stale
 	staleTime := time.Now().UTC().Add(-1 * time.Second)

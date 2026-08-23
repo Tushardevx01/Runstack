@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -206,14 +207,14 @@ func getJobs(args []string) error {
 	fmt.Println("RunStack Jobs")
 	fmt.Println()
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "ID\tNAME\tSTATUS\tNODE")
+	fmt.Fprintln(w, "ID\tNAME\tSTATUS\tNODE\tATTEMPTS\tMAX_RETRIES")
 	fmt.Fprintln(w, "------------------------------------------")
 	for _, j := range result.Jobs {
 		nodeStr := j.AssignedNodeID
 		if nodeStr == "" {
 			nodeStr = "-"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", j.ID, j.Name, j.Status, nodeStr)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\n", j.ID, j.Name, j.Status, nodeStr, j.Attempts, j.MaxRetries)
 	}
 	w.Flush()
 
@@ -265,6 +266,9 @@ func getJob(id string) error {
 		nodeStr = "-"
 	}
 	fmt.Printf("Assigned Node: %s\n", nodeStr)
+
+	fmt.Printf("Attempts:      %d\n", j.Attempts)
+	fmt.Printf("Max Retries:   %d\n", j.MaxRetries)
 
 	resStr := "-"
 	if j.Result != nil {
@@ -456,6 +460,7 @@ func runCLI(args []string) {
 		fmt.Println("  nodes     List all registered nodes")
 		fmt.Println("  node <id> Show details of a specific node")
 		fmt.Println("  jobs      List all jobs (flags: --status, --node)")
+		fmt.Println("  job create <command> [--max-retries <n>] Create a new job")
 		fmt.Println("  job <id>  Show details of a specific job")
 		os.Exit(1)
 	}
@@ -492,8 +497,15 @@ func runCLI(args []string) {
 		}
 	case "job":
 		if len(args) < 2 {
-			fmt.Println("Usage: runstack job <id> [--history]")
+			fmt.Println("Usage: runstack job <id> [--history] OR runstack job create <command>")
 			os.Exit(1)
+		}
+		if args[1] == "create" {
+			if err := createJob(args[2:]); err != nil {
+				printError(err)
+				os.Exit(1)
+			}
+			return
 		}
 		if len(args) == 3 && args[2] == "--history" {
 			if err := getJobHistory(args[1]); err != nil {
@@ -510,4 +522,54 @@ func runCLI(args []string) {
 		fmt.Printf("Unknown command: %s\n", command)
 		os.Exit(1)
 	}
+}
+
+func createJob(args []string) error {
+	maxRetries := 0
+	command := ""
+	name := "cli-job"
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--max-retries" {
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &maxRetries)
+				i++
+			}
+		} else if args[i] == "--name" {
+			if i+1 < len(args) {
+				name = args[i+1]
+				i++
+			}
+		} else {
+			command = args[i]
+		}
+	}
+
+	if command == "" {
+		return fmt.Errorf("command is required")
+	}
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"name":       name,
+		"command":    command,
+		"maxRetries": maxRetries,
+	})
+
+	resp, err := http.Post("http://localhost:8080/api/v1/jobs", "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("failed to connect to Control Plane: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var j job.Job
+	if err := json.NewDecoder(resp.Body).Decode(&j); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	fmt.Printf("Job created successfully: %s\n", j.ID)
+	return nil
 }

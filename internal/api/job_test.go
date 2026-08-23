@@ -66,7 +66,7 @@ func TestJobHandler_Claim(t *testing.T) {
 	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
 
 	nodeRegistry.Register(node.Node{ID: "node-1"})
-	j := jobRegistry.Create("test-claim", "echo 1")
+	j := jobRegistry.Create("test-claim", "echo 1", 0)
 
 	// Set job to ASSIGNED manually
 	status := job.StatusAssigned
@@ -96,7 +96,7 @@ func TestJobHandler_ReportResult(t *testing.T) {
 	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
 
 	nodeRegistry.Register(node.Node{ID: "node-1"})
-	j := jobRegistry.Create("test-result", "echo 1")
+	j := jobRegistry.Create("test-result", "echo 1", 1)
 
 	status := job.StatusAssigned
 	nodeID := "node-1"
@@ -128,7 +128,7 @@ func TestJobHandler_GetEvents(t *testing.T) {
 	jobReg := job.NewRegistry()
 	handler := &JobHandler{Registry: jobReg, NodeRegistry: nodeReg}
 
-	j := jobReg.Create("test-job", "echo 1")
+	j := jobReg.Create("test-job", "echo 1", 0)
 
 	// Missing job
 	req := httptest.NewRequest("GET", "/api/v1/jobs/fake-id/events", nil)

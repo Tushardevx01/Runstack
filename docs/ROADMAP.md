@@ -23,7 +23,7 @@
 - [ ] Automatic rescheduling for dead nodes
 - [x] Execution timeouts
 - [x] Execution ownership and result fencing
-- [ ] Retry policy specification
+- [x] Retry policy specification
 - [ ] Agent crash recovery
 
 ## Future

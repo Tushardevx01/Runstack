@@ -15,8 +15,9 @@ type JobHandler struct {
 }
 
 type CreateJobRequest struct {
-	Name    string `json:"name"`
-	Command string `json:"command"`
+	Name       string `json:"name"`
+	Command    string `json:"command"`
+	MaxRetries int    `json:"maxRetries"`
 }
 
 type UpdateJobRequest struct {
@@ -53,7 +54,7 @@ func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	j := h.Registry.Create(req.Name, req.Command)
+	j := h.Registry.Create(req.Name, req.Command, req.MaxRetries)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

@@ -22,7 +22,7 @@ func TestIntegration_NodeAwareRecovery(t *testing.T) {
 	n := nodeReg.Register(node.Node{ID: "agent-a"})
 
 	// 3. Create a job
-	j := jobReg.Create("job-123", "echo hello")
+	j := jobReg.Create("job-123", "echo hello", 1)
 
 	// 4. Scheduler assigns it
 	sched.SchedulePendingJobs()
@@ -101,5 +101,92 @@ func TestIntegration_NodeAwareRecovery(t *testing.T) {
 	_, err = jobReg.ReportResult(j.ID, "agent-b", execB, job.JobResult{ExitCode: 0})
 	if err != nil {
 		t.Fatalf("expected Agent B result to succeed, got %v", err)
+	}
+}
+
+func TestIntegration_ExecutionFencing_And_Retry(t *testing.T) {
+	nodeReg := node.NewRegistry()
+	jobReg := job.NewRegistry()
+
+	sched := scheduler.New(nodeReg, jobReg)
+
+	// Register Agent A and Agent B
+	nodeReg.Register(node.Node{ID: "agent-a"})
+	nodeReg.Register(node.Node{ID: "agent-b"})
+
+	// Create job with MaxRetries = 1
+	j := jobReg.Create("job-retry", "exit 1", 1)
+
+	// Schedule
+	sched.SchedulePendingJobs()
+	jAssigned, _ := jobReg.Get(j.ID)
+	if jAssigned.Status != job.StatusAssigned {
+		t.Fatalf("expected ASSIGNED")
+	}
+	assignedNode := jAssigned.AssignedNodeID
+
+	// Agent A claims
+	claimedA, err := jobReg.Claim(j.ID, assignedNode)
+	if err != nil {
+		t.Fatalf("failed to claim: %v", err)
+	}
+	execA := claimedA.ExecutionID
+
+	if claimedA.Attempts != 1 {
+		t.Fatalf("expected Attempts = 1, got %d", claimedA.Attempts)
+	}
+
+	// Agent A reports failure
+	reportedA, err := jobReg.ReportResult(j.ID, assignedNode, execA, job.JobResult{ExitCode: 1})
+	if err != nil {
+		t.Fatalf("failed to report result: %v", err)
+	}
+
+	// Should be PENDING
+	if reportedA.Status != job.StatusPending {
+		t.Fatalf("expected PENDING after first failure due to retry, got %s", reportedA.Status)
+	}
+	if reportedA.Attempts != 1 {
+		t.Fatalf("expected Attempts to remain 1 after reporting, got %d", reportedA.Attempts)
+	}
+
+	// Schedule again
+	sched.SchedulePendingJobs()
+	jAssigned2, _ := jobReg.Get(j.ID)
+	if jAssigned2.Status != job.StatusAssigned {
+		t.Fatalf("expected ASSIGNED again")
+	}
+	assignedNode2 := jAssigned2.AssignedNodeID
+
+	// Agent B claims
+	claimedB, err := jobReg.Claim(j.ID, assignedNode2)
+	if err != nil {
+		t.Fatalf("failed to claim: %v", err)
+	}
+	execB := claimedB.ExecutionID
+
+	if claimedB.Attempts != 2 {
+		t.Fatalf("expected Attempts = 2, got %d", claimedB.Attempts)
+	}
+
+	// Agent B reports failure
+	reportedB, err := jobReg.ReportResult(j.ID, assignedNode2, execB, job.JobResult{ExitCode: 1})
+	if err != nil {
+		t.Fatalf("failed to report result: %v", err)
+	}
+
+	// Should be FAILED
+	if reportedB.Status != job.StatusFailed {
+		t.Fatalf("expected FAILED after retries exhausted, got %s", reportedB.Status)
+	}
+	if reportedB.Attempts != 2 {
+		t.Fatalf("expected Attempts = 2, got %d", reportedB.Attempts)
+	}
+
+	// Third claim should be impossible
+	sched.SchedulePendingJobs()
+	jAssigned3, _ := jobReg.Get(j.ID)
+	if jAssigned3.Status != job.StatusFailed {
+		t.Fatalf("job should remain FAILED, got %s", jAssigned3.Status)
 	}
 }
