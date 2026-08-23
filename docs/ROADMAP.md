@@ -15,9 +15,6 @@
 - [x] Graceful Agent Shutdown
 - [x] Unified CLI and Developer Experience
 - [x] Structured Logging (log/slog)
-
-## Milestone 8: Reliability & Failure Recovery
-
 - [x] Job Event History (in-memory)
 - [x] Node-aware failure recovery
 - [x] Automatic rescheduling for dead nodes
@@ -26,28 +23,35 @@
 - [x] Retry policy specification
 - [x] Agent crash recovery (via execution timeout and node offline detection)
 
+## Milestone 7: Application Model & Deployment Specification
+
+- [ ] Application Domain & Registry (Desired state)
+- [ ] Deployment Domain & Registry (Immutable snapshots)
+- [ ] Instance Domain & Registry (Runtime state, separate from Jobs)
+- [ ] REST API for Application CRUD and scaling
+- [ ] CLI Integration (`runstack app create`, `list`, `inspect`)
+- [ ] Scheduler pass for PENDING Instances
+
+## Milestone 8: Container Lifecycle & Execution
+
+- [ ] Agent integration with Docker/Podman
+- [ ] Container creation and lifecycle management
+- [ ] Instance status reporting back to Control Plane
+
 ## Future
+
+### PaaS Features
+- [ ] Application Logs & Metrics
+- [ ] Application Health Probes
+- [ ] Routing / Ingress (PaaS Dashboard)
+- [ ] Rollback & Zero-downtime Deployments
 
 ### Persistence
 - [ ] Persistent database layer
-- [ ] Job history retention
+- [ ] Job / Deployment history retention
 - [ ] Node history logs
 
 ### Scheduling
 - [ ] Load-aware scheduling (CPU/Memory tracking)
 - [ ] Capability-aware scheduling (e.g. requiring Docker)
 - [ ] Resource-aware scheduling limits
-- [x] Deterministic round-robin scheduling
-- [ ] Multiple scheduler strategies (Random, Least-loaded)
-
-### Execution
-- [ ] Concurrent agent workers (parallel execution)
-- [ ] Process isolation (Containerization)
-- [ ] Better command parsing (Shell string support)
-- [ ] Execution limits / Cgroups
-
-### Production
-- [ ] Authentication / mTLS
-- [ ] HTTPS / TLS support
-- [ ] Observability (Tracing, Metrics)
-- [ ] Structured JSON logging
