@@ -9,9 +9,13 @@ import (
 	"time"
 
 	"github.com/Tushardevx01/runstack/internal/api"
+	"github.com/Tushardevx01/runstack/internal/application"
+	"github.com/Tushardevx01/runstack/internal/deployment"
+	"github.com/Tushardevx01/runstack/internal/instance"
 	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
 	"github.com/Tushardevx01/runstack/internal/scheduler"
+	"github.com/Tushardevx01/runstack/internal/service"
 )
 
 type HealthResponse struct {
@@ -60,7 +64,16 @@ func runControlPlane() {
 	jobRegistry := job.NewRegistry()
 	jobHandler := &api.JobHandler{Registry: jobRegistry, NodeRegistry: registry}
 
+	appRegistry := application.NewRegistry()
+	depRegistry := deployment.NewRegistry()
+	instRegistry := instance.NewRegistry()
+	appService := service.NewAppService(appRegistry, depRegistry, instRegistry)
+	appHandler := &api.AppHandler{
+		Service: appService,
+	}
+
 	sched := scheduler.New(registry, jobRegistry)
+	instSched := scheduler.NewInstanceScheduler(registry, instRegistry)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -75,7 +88,10 @@ func runControlPlane() {
 				return
 			case <-ticker.C:
 				if err := sched.SchedulePendingJobs(); err != nil {
-					slog.Error("Scheduler error", "error", err)
+					slog.Error("Job Scheduler error", "error", err)
+				}
+				if err := instSched.SchedulePendingInstances(); err != nil {
+					slog.Error("Instance Scheduler error", "error", err)
 				}
 			}
 		}
@@ -98,6 +114,11 @@ func runControlPlane() {
 	mux.HandleFunc("PATCH /api/v1/jobs/{id}", jobHandler.Update)
 	mux.HandleFunc("POST /api/v1/jobs/{id}/claim", jobHandler.Claim)
 	mux.HandleFunc("POST /api/v1/jobs/{id}/result", jobHandler.ReportResult)
+
+	mux.HandleFunc("POST /api/v1/apps", appHandler.Create)
+	mux.HandleFunc("GET /api/v1/apps", appHandler.List)
+	mux.HandleFunc("GET /api/v1/apps/{id}", appHandler.Get)
+	mux.HandleFunc("PUT /api/v1/apps/{id}", appHandler.Update)
 
 	server := &http.Server{
 		Addr:              ":8080",
