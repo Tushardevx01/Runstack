@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"github.com/Tushardevx01/runstack/internal/api"
 	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
+	"github.com/Tushardevx01/runstack/internal/scheduler"
 )
 
 type HealthResponse struct {
@@ -61,6 +63,27 @@ func main() {
 
 	jobRegistry := job.NewRegistry()
 	jobHandler := &api.JobHandler{Registry: jobRegistry}
+
+	sched := scheduler.New(registry, jobRegistry)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Background scheduling loop
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := sched.SchedulePendingJobs(); err != nil {
+					log.Printf("Scheduler error: %v", err)
+				}
+			}
+		}
+	}()
 
 	mux := http.NewServeMux()
 
