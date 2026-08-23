@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Tushardevx01/runstack/internal/api"
+	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
 )
 
@@ -58,6 +59,9 @@ func main() {
 
 	nodeHandler := &api.NodeHandler{Registry: registry}
 
+	jobRegistry := job.NewRegistry()
+	jobHandler := &api.JobHandler{Registry: jobRegistry}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", healthHandler)
@@ -67,6 +71,11 @@ func main() {
 	mux.HandleFunc("GET /api/v1/nodes", nodeHandler.ListNodes)
 	mux.HandleFunc("GET /api/v1/nodes/{id}", nodeHandler.GetNode)
 	mux.HandleFunc("POST /api/v1/nodes/{id}/heartbeat", nodeHandler.Heartbeat)
+
+	mux.HandleFunc("POST /api/v1/jobs", jobHandler.Create)
+	mux.HandleFunc("GET /api/v1/jobs", jobHandler.List)
+	mux.HandleFunc("GET /api/v1/jobs/{id}", jobHandler.Get)
+	mux.HandleFunc("PATCH /api/v1/jobs/{id}", jobHandler.Update)
 
 	server := &http.Server{
 		Addr:              ":8080",

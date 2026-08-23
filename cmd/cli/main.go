@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
 )
 
@@ -141,6 +142,103 @@ func getNode(id string) error {
 	return nil
 }
 
+type ListJobsResponse struct {
+	Jobs []job.Job `json:"jobs"`
+}
+
+func getJobs() error {
+	resp, err := http.Get("http://localhost:8080/api/v1/jobs")
+	if err != nil {
+		return fmt.Errorf("failed to connect to control plane: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("control plane returned status %d", resp.StatusCode)
+	}
+
+	var result ListJobsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(result.Jobs) == 0 {
+		fmt.Println("No jobs found.")
+		return nil
+	}
+
+	fmt.Println("RunStack Jobs")
+	fmt.Println()
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w, "ID\tNAME\tSTATUS\tNODE")
+	fmt.Fprintln(w, "------------------------------------------")
+	for _, j := range result.Jobs {
+		nodeStr := j.AssignedNodeID
+		if nodeStr == "" {
+			nodeStr = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", j.ID, j.Name, j.Status, nodeStr)
+	}
+	w.Flush()
+
+	return nil
+}
+
+func getJob(id string) error {
+	resp, err := http.Get("http://localhost:8080/api/v1/jobs/" + id)
+	if err != nil {
+		return fmt.Errorf("failed to connect to control plane: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("job not found")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("control plane returned status %d", resp.StatusCode)
+	}
+
+	var j job.Job
+	if err := json.NewDecoder(resp.Body).Decode(&j); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	fmt.Println("Job")
+	fmt.Println("-------------------------")
+	fmt.Printf("ID:            %s\n", j.ID)
+	fmt.Printf("Name:          %s\n", j.Name)
+	fmt.Printf("Command:       %s\n", j.Command)
+	fmt.Printf("Status:        %s\n", j.Status)
+	fmt.Printf("Created:       %s\n", j.CreatedAt.Format(time.RFC3339))
+
+	started := "-"
+	if j.StartedAt != nil {
+		started = j.StartedAt.Format(time.RFC3339)
+	}
+	fmt.Printf("Started:       %s\n", started)
+
+	completed := "-"
+	if j.CompletedAt != nil {
+		completed = j.CompletedAt.Format(time.RFC3339)
+	}
+	fmt.Printf("Completed:     %s\n", completed)
+
+	nodeStr := j.AssignedNodeID
+	if nodeStr == "" {
+		nodeStr = "-"
+	}
+	fmt.Printf("Assigned Node: %s\n", nodeStr)
+
+	resStr := j.Result
+	if resStr == "" {
+		resStr = "-"
+	}
+	fmt.Printf("Result:        %s\n", resStr)
+
+	return nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: runstack <command>")
@@ -169,6 +267,20 @@ func main() {
 			os.Exit(1)
 		}
 		if err := getNode(os.Args[2]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "jobs":
+		if err := getJobs(); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "job":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: runstack job <id>")
+			os.Exit(1)
+		}
+		if err := getJob(os.Args[2]); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
