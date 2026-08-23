@@ -52,7 +52,7 @@ func (r *Registry) Create(appID string, spec application.AppSpec) (Deployment, e
 		ApplicationID: appID,
 		Version:       version,
 		SpecSnapshot:  copiedSpec,
-		Status:        StatusPending,
+		Status:        StatusActive,
 		CreatedAt:     time.Now().UTC(),
 	}
 
@@ -109,4 +109,18 @@ func (r *Registry) UpdateStatus(id string, status DeploymentStatus) (Deployment,
 	r.deployments[id] = dep.DeepCopy()
 
 	return dep.DeepCopy(), nil
+}
+
+func (r *Registry) UpdateState(id string, status DeploymentStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	dep, exists := r.deployments[id]
+	if !exists {
+		return ErrNotFound
+	}
+
+	dep.Status = status
+	r.deployments[id] = dep
+	return nil
 }

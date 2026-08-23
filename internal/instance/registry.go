@@ -82,9 +82,9 @@ func (r *Registry) UpdateState(id string, status InstanceStatus, nodeID string, 
 	// Basic state transition validation could go here, for now we just allow it
 	// if design allows it. But let's add some basics:
 	if inst.Status == StatusStopped || inst.Status == StatusCrashed {
-		if status != StatusPending { // Only allow restart (to pending) from terminal
-			return Instance{}, ErrInvalidStateTransition
-		}
+		// Terminal states cannot be changed. Milestone 7B requires immutability of failed instances.
+		// Reconciler creates NEW instances instead.
+		return Instance{}, ErrInvalidStateTransition
 	}
 
 	inst.Status = status

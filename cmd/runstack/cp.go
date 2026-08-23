@@ -67,21 +67,23 @@ func runControlPlane() {
 	appRegistry := application.NewRegistry()
 	depRegistry := deployment.NewRegistry()
 	instRegistry := instance.NewRegistry()
-	appService := service.NewAppService(appRegistry, depRegistry, instRegistry)
+	appService := service.NewAppService(appRegistry, depRegistry)
 	appHandler := &api.AppHandler{
 		Service: appService,
 	}
 
 	sched := scheduler.New(registry, jobRegistry)
 	instSched := scheduler.NewInstanceScheduler(registry, instRegistry)
+	instReconciler := scheduler.NewInstanceReconciler(appRegistry, depRegistry, instRegistry, registry)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Background scheduling loop
+	// Start background scheduler loops
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -89,6 +91,9 @@ func runControlPlane() {
 			case <-ticker.C:
 				if err := sched.SchedulePendingJobs(); err != nil {
 					slog.Error("Job Scheduler error", "error", err)
+				}
+				if err := instReconciler.Reconcile(); err != nil {
+					slog.Error("Instance Reconciler error", "error", err)
 				}
 				if err := instSched.SchedulePendingInstances(); err != nil {
 					slog.Error("Instance Scheduler error", "error", err)

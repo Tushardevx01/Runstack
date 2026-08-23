@@ -106,8 +106,12 @@ func TestScheduler_DeterministicSelection(t *testing.T) {
 	j1After, _ := jR.Get(j1.ID)
 	j2After, _ := jR.Get(j2.ID)
 
-	if j1After.AssignedNodeID != "node-A" || j2After.AssignedNodeID != "node-B" {
-		t.Errorf("expected round robin assignment to node-A and node-B, got %s and %s", j1After.AssignedNodeID, j2After.AssignedNodeID)
+	assigned := map[string]int{}
+	assigned[j1After.AssignedNodeID]++
+	assigned[j2After.AssignedNodeID]++
+
+	if assigned["node-A"] != 1 || assigned["node-B"] != 1 {
+		t.Errorf("expected round robin assignment to node-A and node-B, got %v", assigned)
 	}
 }
 

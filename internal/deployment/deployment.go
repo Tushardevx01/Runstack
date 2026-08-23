@@ -9,9 +9,8 @@ import (
 type DeploymentStatus string
 
 const (
-	StatusPending    DeploymentStatus = "PENDING"
-	StatusRollingOut DeploymentStatus = "ROLLING_OUT"
-	StatusSuccess    DeploymentStatus = "SUCCESS"
+	StatusActive     DeploymentStatus = "ACTIVE"
+	StatusSuperseded DeploymentStatus = "SUPERSEDED"
 	StatusFailed     DeploymentStatus = "FAILED"
 	StatusRolledBack DeploymentStatus = "ROLLED_BACK"
 )

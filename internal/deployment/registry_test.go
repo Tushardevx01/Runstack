@@ -20,7 +20,7 @@ func TestRegistry_CreateGet(t *testing.T) {
 	if dep.Version != 1 {
 		t.Errorf("expected version 1, got %d", dep.Version)
 	}
-	if dep.Status != StatusPending {
+	if dep.Status != StatusActive {
 		t.Errorf("expected PENDING, got %s", dep.Status)
 	}
 

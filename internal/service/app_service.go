@@ -3,20 +3,17 @@ package service
 import (
 	"github.com/Tushardevx01/runstack/internal/application"
 	"github.com/Tushardevx01/runstack/internal/deployment"
-	"github.com/Tushardevx01/runstack/internal/instance"
 )
 
 type AppService struct {
 	AppRegistry        *application.Registry
 	DeploymentRegistry *deployment.Registry
-	InstanceRegistry   *instance.Registry
 }
 
-func NewAppService(appReg *application.Registry, depReg *deployment.Registry, instReg *instance.Registry) *AppService {
+func NewAppService(appReg *application.Registry, depReg *deployment.Registry) *AppService {
 	return &AppService{
 		AppRegistry:        appReg,
 		DeploymentRegistry: depReg,
-		InstanceRegistry:   instReg,
 	}
 }
 
@@ -30,16 +27,10 @@ func (s *AppService) CreateApp(name string, spec application.AppSpec) (applicati
 	// 2. Create Deployment
 	dep, err := s.DeploymentRegistry.Create(app.ID, spec)
 	if err != nil {
-		// In a persistent system we'd rollback. Here, it won't realistically fail.
 		return app, err
 	}
 
-	// 3. Create Instances
-	for i := 0; i < spec.Replicas; i++ {
-		_, _ = s.InstanceRegistry.Create(app.ID, dep.ID)
-	}
-
-	// 4. Update App with ActiveDeploymentID
+	// 3. Update App with ActiveDeploymentID
 	app, err = s.AppRegistry.Update(app.ID, spec, dep.ID, application.StatusPending)
 	return app, err
 }
@@ -57,16 +48,16 @@ func (s *AppService) UpdateApp(id string, spec application.AppSpec) (application
 		return app, err
 	}
 
-	// 2. Create New Pending Instances
-	for i := 0; i < spec.Replicas; i++ {
-		_, _ = s.InstanceRegistry.Create(id, dep.ID)
-	}
+	// Capture old deployment ID before updating
+	oldDepID := app.ActiveDeploymentID
 
-	// 3. Update App
+	// 2. Update App with New ActiveDeploymentID
 	app, err = s.AppRegistry.Update(id, spec, dep.ID, application.StatusPending)
 
-	// Note: Old instances for previous deployments remain.
-	// A future reconciliation loop would terminate them.
+	if oldDepID != "" && oldDepID != dep.ID {
+		s.DeploymentRegistry.UpdateState(oldDepID, deployment.StatusSuperseded)
+	}
+	s.DeploymentRegistry.UpdateState(dep.ID, deployment.StatusActive)
 
 	return app, err
 }
