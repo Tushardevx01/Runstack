@@ -171,7 +171,7 @@ func TestScheduler_StaleRecovery(t *testing.T) {
 	jobReg := job.NewRegistry()
 
 	s := New(nodeReg, jobReg)
-	s.StaleThreshold = 100 * time.Millisecond
+	s.ExecutionTimeout = 100 * time.Millisecond
 
 	nodeReg.Register(node.Node{ID: "node-1"})
 

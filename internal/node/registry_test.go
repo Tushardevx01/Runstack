@@ -111,3 +111,45 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestRegistry_OfflineSince(t *testing.T) {
+	r := NewRegistry()
+	n := r.Register(Node{ID: "node-1"})
+
+	if n.OfflineSince != nil {
+		t.Fatalf("expected new node OfflineSince to be nil, got %v", n.OfflineSince)
+	}
+
+	// Force LastHeartbeat to be old
+	r.mu.Lock()
+	r.nodes["node-1"].LastHeartbeat = time.Now().Add(-10 * time.Minute)
+	r.mu.Unlock()
+
+	// 1. ONLINE -> OFFLINE
+	r.MarkOfflineNodes(5 * time.Minute)
+	nAfter, _ := r.Get("node-1")
+	if nAfter.Status != StatusOffline {
+		t.Fatalf("expected node to be offline")
+	}
+	if nAfter.OfflineSince == nil {
+		t.Fatalf("expected OfflineSince to be populated")
+	}
+	firstOfflineSince := *nAfter.OfflineSince
+
+	// 2. OFFLINE -> OFFLINE (should not update OfflineSince)
+	time.Sleep(5 * time.Millisecond) // ensure time changes
+	r.MarkOfflineNodes(5 * time.Minute)
+	nAgain, _ := r.Get("node-1")
+	if !nAgain.OfflineSince.Equal(firstOfflineSince) {
+		t.Fatalf("expected OfflineSince to remain constant on repeated checks")
+	}
+
+	// 3. OFFLINE -> ONLINE
+	nBack, _ := r.Heartbeat("node-1", nil)
+	if nBack.Status != StatusOnline {
+		t.Fatalf("expected node to be online")
+	}
+	if nBack.OfflineSince != nil {
+		t.Fatalf("expected OfflineSince to be nil after heartbeat")
+	}
+}

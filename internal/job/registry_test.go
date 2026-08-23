@@ -225,7 +225,7 @@ func TestRegistry_EventHistory_Failure(t *testing.T) {
 	}
 }
 
-func TestRegistry_RecoverStaleJobs(t *testing.T) {
+func TestRegistry_RecoverExecutionTimeouts(t *testing.T) {
 	r := NewRegistry()
 	j1 := r.Create("job1", "echo 1")
 	j2 := r.Create("job2", "echo 2")
@@ -251,7 +251,7 @@ func TestRegistry_RecoverStaleJobs(t *testing.T) {
 	// j3 will be completed
 	r.ReportResult(j3.ID, nodeID, JobResult{ExitCode: 0, Stdout: "done"})
 
-	recovered := r.RecoverStaleJobs(30 * time.Second)
+	recovered := r.RecoverExecutionTimeouts(30 * time.Second)
 	if recovered != 1 {
 		t.Fatalf("expected 1 job recovered, got %d", recovered)
 	}
@@ -286,7 +286,7 @@ func TestRegistry_RecoverStaleJobs(t *testing.T) {
 	}
 
 	// Recover again should yield 0
-	recovered2 := r.RecoverStaleJobs(30 * time.Second)
+	recovered2 := r.RecoverExecutionTimeouts(30 * time.Second)
 	if recovered2 != 0 {
 		t.Fatalf("expected 0 jobs recovered, got %d", recovered2)
 	}
@@ -296,7 +296,7 @@ func TestRegistry_RecoverStaleJobs(t *testing.T) {
 	}
 }
 
-func TestRegistry_RecoverStaleJobs_MissingStartedAt(t *testing.T) {
+func TestRegistry_RecoverExecutionTimeouts_MissingStartedAt(t *testing.T) {
 	r := NewRegistry()
 	j1 := r.Create("job1", "echo 1")
 
@@ -306,13 +306,13 @@ func TestRegistry_RecoverStaleJobs_MissingStartedAt(t *testing.T) {
 	r.mu.Unlock()
 
 	// Should not panic, should recover 0
-	recovered := r.RecoverStaleJobs(1 * time.Second)
+	recovered := r.RecoverExecutionTimeouts(1 * time.Second)
 	if recovered != 0 {
 		t.Fatalf("expected 0 recovered for missing StartedAt, got %d", recovered)
 	}
 }
 
-func TestRegistry_RecoverStaleJobs_WrongState(t *testing.T) {
+func TestRegistry_RecoverExecutionTimeouts_WrongState(t *testing.T) {
 	r := NewRegistry()
 	jAssigned := r.Create("jobAssigned", "echo a")
 	jFailed := r.Create("jobFailed", "echo f")
@@ -326,13 +326,13 @@ func TestRegistry_RecoverStaleJobs_WrongState(t *testing.T) {
 	r.ReportResult(jFailed.ID, nodeID, JobResult{ExitCode: 1, Stdout: ""})
 
 	// Recover should skip them
-	recovered := r.RecoverStaleJobs(0 * time.Second)
+	recovered := r.RecoverExecutionTimeouts(0 * time.Second)
 	if recovered != 0 {
 		t.Fatalf("expected 0 recovered for wrong state, got %d", recovered)
 	}
 }
 
-func TestRegistry_RecoverStaleJobs_Concurrency(t *testing.T) {
+func TestRegistry_RecoverExecutionTimeouts_Concurrency(t *testing.T) {
 	r := NewRegistry()
 	nodeID := "node-1"
 	var wg sync.WaitGroup
@@ -354,8 +354,53 @@ func TestRegistry_RecoverStaleJobs_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r.RecoverStaleJobs(1 * time.Second)
+			r.RecoverExecutionTimeouts(1 * time.Second)
 		}()
 	}
 	wg.Wait()
+}
+
+func TestRegistry_RecoverNodeJobs(t *testing.T) {
+	r := NewRegistry()
+	j1 := r.Create("job1", "echo 1") // assigned and running on node-1
+	j2 := r.Create("job2", "echo 2") // assigned on node-1, not running
+	j3 := r.Create("job3", "echo 3") // assigned and running on node-2
+
+	node1 := "node-1"
+	node2 := "node-2"
+	statusAssigned := StatusAssigned
+
+	r.Update(j1.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &node1})
+	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &node1})
+	r.Update(j3.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &node2})
+
+	r.Claim(j1.ID, node1)
+	r.Claim(j3.ID, node2)
+
+	// Recover node-1 jobs
+	recovered := r.RecoverNodeJobs(node1, "node offline")
+	if recovered != 2 {
+		t.Fatalf("expected 2 jobs recovered, got %d", recovered)
+	}
+
+	j1After, _ := r.Get(j1.ID)
+	if j1After.Status != StatusPending || j1After.AssignedNodeID != "" || j1After.StartedAt != nil {
+		t.Fatalf("j1 not correctly recovered: %+v", j1After)
+	}
+
+	j2After, _ := r.Get(j2.ID)
+	if j2After.Status != StatusPending || j2After.AssignedNodeID != "" {
+		t.Fatalf("j2 not correctly recovered: %+v", j2After)
+	}
+
+	j3After, _ := r.Get(j3.ID)
+	if j3After.Status != StatusRunning || j3After.AssignedNodeID != node2 {
+		t.Fatalf("j3 was incorrectly recovered: %+v", j3After)
+	}
+
+	// Idempotency check
+	recoveredAgain := r.RecoverNodeJobs(node1, "node offline")
+	if recoveredAgain != 0 {
+		t.Fatalf("expected 0 recovered on retry, got %d", recoveredAgain)
+	}
 }

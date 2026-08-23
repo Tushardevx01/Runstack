@@ -22,5 +22,6 @@ type Node struct {
 	Architecture  string       `json:"architecture"`
 	Status        string       `json:"status"`
 	LastHeartbeat time.Time    `json:"lastHeartbeat"`
+	OfflineSince  *time.Time   `json:"offlineSince,omitempty"`
 	Capabilities  Capabilities `json:"capabilities"`
 }

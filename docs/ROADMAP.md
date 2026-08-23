@@ -19,7 +19,7 @@
 ## Milestone 8: Reliability & Failure Recovery
 
 - [x] Job Event History (in-memory)
-- [ ] Stale RUNNING detection (Reconciliation)
+- [ ] Node-aware failure recovery
 - [ ] Automatic rescheduling for dead nodes
 - [ ] Job leases / execution timeouts
 - [ ] Retry policy specification

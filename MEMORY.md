@@ -32,9 +32,11 @@ Unified binary (`cmd/runstack`), comprehensive `Makefile`, structured `log/slog`
 ### Milestone 8 (Phase 1)
 In-memory Job Event History. Every legitimate job state transition (Creation, Assignment, Claim, Success, Failure) deterministically produces a chronological event. Events are strictly owned by the Control Plane, keeping the architecture secure. Note: This is *not* persistence yet, and *not* stale-job recovery yet.
 
-### Milestone 6A: Stale Execution Detection
-Introduced recovery for stale `RUNNING` jobs. The Control Plane scheduler periodically checks if `RUNNING` jobs have exceeded a configurable `StaleThreshold`. If so, they are safely reverted to `PENDING` via a domain-level transition and exactly one `EventRecovered` is appended.
-*Architectural Note on Clearing Fields:* During recovery, the Job's `AssignedNodeID` and `StartedAt` are explicitly cleared. This accurately reflects that the job is no longer assigned or running. The information about the previous failed assignment is not lost; it is preserved immutably inside the `JobEvent` history as the authoritative audit log.
+### Milestone 6A & 6B: Failure Recovery
+Introduced decoupled node-aware failure recovery and execution timeouts.
+- **ExecutionTimeout (2h):** The absolute maximum time a job may run before being safely recovered to `PENDING`.
+- **NodeGracePeriod (30s):** The buffer applied *after* a node transitions to `OFFLINE` before its assigned jobs are recovered to `PENDING`.
+*Architectural Note on Clearing Fields:* During recovery, the Job's `AssignedNodeID` and `StartedAt` are explicitly cleared. This accurately reflects that the job is no longer assigned or running. The information about the previous failed assignment is not lost; it is preserved immutably inside the `JobEvent` history as the authoritative audit log. Duplicate execution is an accepted risk at this stage as leases have not been introduced.
 
 ## Current Job Lifecycle
 

@@ -10,28 +10,38 @@ import (
 )
 
 type Scheduler struct {
-	nodeRegistry   *node.Registry
-	jobRegistry    *job.Registry
-	StaleThreshold time.Duration
+	nodeRegistry     *node.Registry
+	jobRegistry      *job.Registry
+	ExecutionTimeout time.Duration
+	NodeGracePeriod  time.Duration
 }
 
 func New(nodeRegistry *node.Registry, jobRegistry *job.Registry) *Scheduler {
 	return &Scheduler{
-		nodeRegistry:   nodeRegistry,
-		jobRegistry:    jobRegistry,
-		StaleThreshold: 30 * time.Second, // default configuration
+		nodeRegistry:     nodeRegistry,
+		jobRegistry:      jobRegistry,
+		ExecutionTimeout: 2 * time.Hour,
+		NodeGracePeriod:  30 * time.Second,
 	}
 }
 
 func (s *Scheduler) SchedulePendingJobs() error {
-	// Step 1: Detect and recover stale RUNNING jobs back to PENDING.
-	if s.StaleThreshold > 0 {
-		s.jobRegistry.RecoverStaleJobs(s.StaleThreshold)
+	// Step 1: Recover jobs exceeding ExecutionTimeout
+	if s.ExecutionTimeout > 0 {
+		s.jobRegistry.RecoverExecutionTimeouts(s.ExecutionTimeout)
 	}
 
-	// Step 2: Find eligible ONLINE nodes.
+	// Step 2: Read NodeRegistry and recover OFFLINE nodes beyond grace period
 	nodes := s.nodeRegistry.List()
+	for _, n := range nodes {
+		if n.Status == node.StatusOffline && n.OfflineSince != nil {
+			if time.Since(*n.OfflineSince) >= s.NodeGracePeriod {
+				s.jobRegistry.RecoverNodeJobs(n.ID, "Node offline grace period exceeded")
+			}
+		}
+	}
 
+	// Step 3: Find ONLINE nodes
 	var onlineNodes []node.Node
 	for _, n := range nodes {
 		if n.Status == node.StatusOnline {
@@ -49,8 +59,10 @@ func (s *Scheduler) SchedulePendingJobs() error {
 
 	selectedNode := onlineNodes[0]
 
+	// Step 4: Find PENDING jobs
 	jobs := s.jobRegistry.List()
 
+	// Step 5: Assign jobs
 	for _, j := range jobs {
 		if j.Status == job.StatusPending {
 			status := job.StatusAssigned

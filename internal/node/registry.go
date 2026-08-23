@@ -66,6 +66,7 @@ func (r *Registry) Heartbeat(id string, caps *Capabilities) (*Node, error) {
 		isNewOnline := n.Status != StatusOnline
 		n.Status = StatusOnline
 		n.LastHeartbeat = time.Now()
+		n.OfflineSince = nil
 		if caps != nil {
 			n.Capabilities = *caps
 		}
@@ -87,10 +88,12 @@ func (r *Registry) MarkOfflineNodes(timeout time.Duration) {
 
 	var offlineNodes []string
 	now := time.Now()
+	nowUTC := now.UTC()
 	for _, n := range r.nodes {
 		if now.Sub(n.LastHeartbeat) > timeout {
 			if n.Status != StatusOffline {
 				n.Status = StatusOffline
+				n.OfflineSince = &nowUTC
 				offlineNodes = append(offlineNodes, n.ID)
 			}
 		}

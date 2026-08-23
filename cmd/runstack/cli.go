@@ -99,7 +99,12 @@ func getNodes() error {
 		if container == "" {
 			container = "none"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\n", n.ID, n.Hostname, n.CPUCores, formatBytes(n.Capabilities.TotalMemoryBytes), n.OS, n.Architecture, container, n.Status)
+		statusStr := n.Status
+		if n.Status == "offline" && n.OfflineSince != nil {
+			duration := time.Since(*n.OfflineSince).Round(time.Second)
+			statusStr = fmt.Sprintf("offline (%s)", duration)
+		}
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\n", n.ID, n.Hostname, n.CPUCores, formatBytes(n.Capabilities.TotalMemoryBytes), n.OS, n.Architecture, container, statusStr)
 	}
 	w.Flush()
 

@@ -89,7 +89,7 @@ Valid paths:
 
 Every legitimate state transition automatically produces a chronological `JobEvent` owned securely by the Control Plane. Agents cannot arbitrarily inject events.
 
-**Note on Stale Recovery:** When a `RUNNING` job exceeds the execution threshold, the Control Plane recovers it to `PENDING`. During this transition, `AssignedNodeID` and `StartedAt` are explicitly cleared on the Job struct. This accurately resets the state for future scheduling. The *previous* assignment and start data are permanently and immutably preserved in the Job's Event History.
+**Note on Stale Recovery:** When a `RUNNING` job exceeds the execution timeout or its assigned node exceeds the offline grace period, the Control Plane recovers it to `PENDING`. During this transition, `AssignedNodeID` and `StartedAt` are explicitly cleared on the Job struct. This accurately resets the state for future scheduling. The *previous* assignment and start data are permanently and immutably preserved in the Job's Event History.
 
 ### 2. Node Offline Detection
 The Node Registry contains a background loop (`startOfflineDetector`) that checks all nodes every 30 seconds. If a node hasn't sent a heartbeat within the threshold, it is automatically marked `OFFLINE`.

@@ -224,9 +224,9 @@ func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) 
 	return &jobCopy, nil
 }
 
-// RecoverStaleJobs finds RUNNING jobs that have exceeded the staleThreshold
+// RecoverExecutionTimeouts finds RUNNING jobs that have exceeded the timeout
 // and safely recovers them back to PENDING. Returns the number of jobs recovered.
-func (r *Registry) RecoverStaleJobs(staleThreshold time.Duration) int {
+func (r *Registry) RecoverExecutionTimeouts(timeout time.Duration) int {
 	r.mu.Lock()
 
 	recoveredCount := 0
@@ -234,22 +234,20 @@ func (r *Registry) RecoverStaleJobs(staleThreshold time.Duration) int {
 
 	for _, j := range r.jobs {
 		if j.Status == StatusRunning && j.StartedAt != nil {
-			if now.Sub(*j.StartedAt) >= staleThreshold {
+			if now.Sub(*j.StartedAt) >= timeout {
 				oldNodeID := j.AssignedNodeID
 
-				// Transition back to PENDING
 				j.Status = StatusPending
 				j.AssignedNodeID = ""
 				j.StartedAt = nil
 
-				// Append recovery event
 				r.appendEvent(
 					j.ID,
 					EventRecovered,
 					StatusRunning,
 					StatusPending,
 					oldNodeID,
-					fmt.Sprintf("Job recovered after exceeding stale threshold of %v", staleThreshold),
+					"Execution timeout exceeded",
 				)
 
 				recoveredCount++
@@ -259,7 +257,43 @@ func (r *Registry) RecoverStaleJobs(staleThreshold time.Duration) int {
 	r.mu.Unlock()
 
 	if recoveredCount > 0 {
-		slog.Info("recovered stale jobs", "count", recoveredCount)
+		slog.Info("recovered execution timeouts", "count", recoveredCount)
+	}
+
+	return recoveredCount
+}
+
+// RecoverNodeJobs finds RUNNING or ASSIGNED jobs for a specific node
+// and safely recovers them back to PENDING. Returns the number of jobs recovered.
+func (r *Registry) RecoverNodeJobs(nodeID string, reason string) int {
+	r.mu.Lock()
+
+	recoveredCount := 0
+
+	for _, j := range r.jobs {
+		if (j.Status == StatusRunning || j.Status == StatusAssigned) && j.AssignedNodeID == nodeID {
+			oldStatus := j.Status
+
+			j.Status = StatusPending
+			j.AssignedNodeID = ""
+			j.StartedAt = nil
+
+			r.appendEvent(
+				j.ID,
+				EventRecovered,
+				oldStatus,
+				StatusPending,
+				nodeID,
+				reason,
+			)
+
+			recoveredCount++
+		}
+	}
+	r.mu.Unlock()
+
+	if recoveredCount > 0 {
+		slog.Info("recovered node jobs", "node_id", nodeID, "count", recoveredCount, "reason", reason)
 	}
 
 	return recoveredCount
