@@ -5,6 +5,9 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/Tushardevx01/runstack/internal/api"
+	"github.com/Tushardevx01/runstack/internal/node"
 )
 
 type HealthResponse struct {
@@ -42,10 +45,28 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	registry := node.NewRegistry()
+
+	// Background offline detection
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			registry.MarkOfflineNodes(30 * time.Second)
+		}
+	}()
+
+	nodeHandler := &api.NodeHandler{Registry: registry}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /api/v1/status", statusHandler)
+
+	mux.HandleFunc("POST /api/v1/nodes/register", nodeHandler.Register)
+	mux.HandleFunc("GET /api/v1/nodes", nodeHandler.ListNodes)
+	mux.HandleFunc("GET /api/v1/nodes/{id}", nodeHandler.GetNode)
+	mux.HandleFunc("POST /api/v1/nodes/{id}/heartbeat", nodeHandler.Heartbeat)
 
 	server := &http.Server{
 		Addr:              ":8080",
