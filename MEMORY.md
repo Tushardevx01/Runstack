@@ -130,3 +130,9 @@ Instances use a **dedicated ExecutionID** distinct from Jobs.
 The Control Plane is responsible for `ExecutionID` generation via the `POST /api/v1/instances/{id}/claim` endpoint.
 The Agent manages long-running applications using `InstanceExecutor`, polling `ASSIGNED` instances, claiming them, and calling the generic `ContainerRuntime` interface. Status changes are securely pushed to `POST /api/v1/instances/{id}/status`.
 The runtime boundary is maintained.
+
+## Step 8C: Instance Health, Reconciliation & Automatic Recovery
+Explicitly separates Status (runtime), Health (application), Node State (infrastructure), and Desired State (Deployment).
+- Node drop to offline sets `UNKNOWN` with `UnknownSince`, allowing `InstanceUnknownTimeout` before marking `CRASHED` (avoiding false alarms).
+- Deployment tracks `ConsecutiveCrashes` with a circuit breaker mechanism (`MaxCrashLoopThreshold`).
+- Reconciler gracefully scales instances up/down and handles stale replacements, halting replacements when a deployment is `DEGRADED`.

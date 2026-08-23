@@ -55,7 +55,9 @@ func TestInstanceReconciler_OrphanRecovery(t *testing.T) {
 	instReg.UpdateState(inst.ID, instance.StatusRunning, "node-1", "cid-1")
 
 	// node-1 is not registered, so it is implicitly offline
-	r.Reconcile()
+	ConfigInstanceUnknownTimeout = 0
+	r.Reconcile() // marks UNKNOWN
+	r.Reconcile() // times out to CRASHED, scales up
 
 	// Original instance should be CRASHED
 	updatedInst, _ := instReg.Get(inst.ID)

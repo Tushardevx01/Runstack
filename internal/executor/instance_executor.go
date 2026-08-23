@@ -87,7 +87,7 @@ func (e *InstanceExecutor) pollAndClaim() {
 
 		info, err := e.Runtime.Start(e.ctx, spec)
 		if err != nil {
-			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, instance.StatusCrashed, "")
+			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, instance.StatusCrashed, instance.HealthUnknown, "")
 			continue
 		}
 
@@ -96,7 +96,7 @@ func (e *InstanceExecutor) pollAndClaim() {
 			status = instance.StatusCrashed
 		}
 
-		_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, status, info.ContainerID)
+		_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, status, instance.HealthUnknown, info.ContainerID)
 	}
 }
 
@@ -124,9 +124,9 @@ func (e *InstanceExecutor) monitorActive() {
 		if err != nil {
 			if errors.Is(err, runtime.ErrContainerNotFound) {
 				if inst.Status == instance.StatusStopping {
-					_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, instance.StatusStopped, containerName)
+					_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, instance.StatusStopped, instance.HealthUnknown, containerName)
 				} else {
-					_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, instance.StatusCrashed, containerName)
+					_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, instance.StatusCrashed, instance.HealthUnknown, containerName)
 				}
 			} else if errors.Is(err, runtime.ErrContainerConflict) {
 				// stale execution
@@ -135,14 +135,17 @@ func (e *InstanceExecutor) monitorActive() {
 		}
 
 		var targetStatus instance.InstanceStatus
+		var targetHealth instance.InstanceHealth
 		switch state {
 		case runtime.StateRunning:
 			if inst.Status == instance.StatusStopping {
 				_ = e.Runtime.Stop(e.ctx, containerName)
 				_ = e.Runtime.Remove(e.ctx, containerName)
 				targetStatus = instance.StatusStopped
+				targetHealth = instance.HealthUnknown
 			} else if inst.Status == instance.StatusStarting {
 				targetStatus = instance.StatusRunning
+				targetHealth = instance.HealthHealthy
 			}
 		case runtime.StateExited:
 			if inst.Status == instance.StatusStopping {
@@ -154,7 +157,7 @@ func (e *InstanceExecutor) monitorActive() {
 		}
 
 		if targetStatus != "" && targetStatus != inst.Status {
-			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, targetStatus, containerName)
+			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, inst.ExecutionID, targetStatus, targetHealth, containerName)
 		}
 	}
 }

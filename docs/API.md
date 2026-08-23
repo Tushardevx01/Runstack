@@ -78,4 +78,4 @@ All endpoints are hosted by the Control Plane, which defaults to `http://localho
 
 * `GET /api/v1/instances` - List instances (supports `node_id` and `status` query params)
 * `POST /api/v1/instances/{id}/claim` - Agent claim an assigned instance. Returns `ExecutionID` and `AppSpec`.
-* `POST /api/v1/instances/{id}/status` - Agent pushes runtime state (e.g., `RUNNING`, `CRASHED`). Requires `ExecutionID`.
+* `POST /api/v1/instances/{id}/status` - Agent pushes runtime state (e.g., `RUNNING`, `CRASHED`) and health (`HEALTHY`, `UNHEALTHY`). Requires `ExecutionID`.

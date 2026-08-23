@@ -75,6 +75,7 @@ type InstanceStatusRequest struct {
 	NodeID      string                  `json:"node_id"`
 	ExecutionID string                  `json:"execution_id"`
 	Status      instance.InstanceStatus `json:"status"`
+	Health      instance.InstanceHealth `json:"health,omitempty"`
 	ContainerID string                  `json:"container_id,omitempty"`
 }
 
@@ -96,16 +97,22 @@ func (h *InstanceHandler) ReportStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inst, err := h.InstanceRegistry.ReportStatus(id, req.NodeID, req.ExecutionID, req.Status, req.ContainerID)
+	oldInst, _ := h.InstanceRegistry.Get(id)
+
+	inst, err := h.InstanceRegistry.ReportStatus(id, req.NodeID, req.ExecutionID, req.Status, req.Health, req.ContainerID)
 	if err != nil {
 		if err == instance.ErrNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else if err.Error() == "node ID mismatch" || err.Error() == "stale execution ID" {
 			http.Error(w, err.Error(), http.StatusConflict)
 		} else {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusBadRequest) // e.g. invalid state transition
 		}
 		return
+	}
+
+	if oldInst.Status != instance.StatusCrashed && req.Status == instance.StatusCrashed {
+		h.DeploymentRegistry.RecordCrash(inst.DeploymentID, deployment.MaxCrashLoopThreshold)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

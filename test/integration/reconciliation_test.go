@@ -39,6 +39,7 @@ func TestEndToEndReconciliation(t *testing.T) {
 	}
 
 	// 3. Run reconciliation
+	scheduler.ConfigInstanceUnknownTimeout = 0
 	reconciler.Reconcile()
 
 	// Scheduler assigns instances
@@ -56,6 +57,7 @@ func TestEndToEndReconciliation(t *testing.T) {
 	}
 
 	// 5. Run reconciliation again
+	scheduler.ConfigInstanceUnknownTimeout = 0
 	reconciler.Reconcile()
 
 	// 6. Verify still exactly 2, no duplicates
@@ -76,6 +78,8 @@ func TestEndToEndReconciliation(t *testing.T) {
 	nodeReg.Heartbeat(healthyNodeID, nil)      // bring one back online
 
 	// 8. Reconcile
+	scheduler.ConfigInstanceUnknownTimeout = 0
+	reconciler.Reconcile()
 	reconciler.Reconcile()
 
 	// 9. Verify the orphaned Instance becomes CRASHED
@@ -130,6 +134,7 @@ func TestEndToEndReconciliation(t *testing.T) {
 	}
 
 	// 15. Verify reconciliation targets the new active Deployment
+	scheduler.ConfigInstanceUnknownTimeout = 0
 	reconciler.Reconcile()
 
 	insts = instReg.List()

@@ -134,7 +134,7 @@ func (r *Registry) Claim(id string, nodeID string) (Instance, error) {
 }
 
 // ReportStatus safely updates the instance status from the Agent.
-func (r *Registry) ReportStatus(id string, nodeID string, executionID string, status InstanceStatus, containerID string) (Instance, error) {
+func (r *Registry) ReportStatus(id string, nodeID string, executionID string, status InstanceStatus, health InstanceHealth, containerID string) (Instance, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -150,8 +150,17 @@ func (r *Registry) ReportStatus(id string, nodeID string, executionID string, st
 		return Instance{}, errors.New("stale execution ID")
 	}
 
+	// Allowed Agent transitions:
+	// STARTING -> RUNNING, CRASHED, STOPPED
+	// RUNNING -> CRASHED, STOPPED
+	// STOPPING -> STOPPED, CRASHED
+	// Wait, agent doesn't set UNKNOWN.
+	if status == StatusPending || status == StatusAssigned || status == StatusStarting || status == StatusUnknown {
+		return Instance{}, ErrInvalidStateTransition
+	}
+
 	// Idempotency check
-	if inst.Status == status {
+	if inst.Status == status && inst.Health == health {
 		if containerID != "" && inst.ContainerID == "" {
 			inst.ContainerID = containerID
 			r.instances[id] = inst.DeepCopy()
@@ -163,29 +172,48 @@ func (r *Registry) ReportStatus(id string, nodeID string, executionID string, st
 		return Instance{}, ErrInvalidStateTransition
 	}
 
-	// Allowed Agent transitions:
-	// STARTING -> RUNNING, CRASHED, STOPPED
-	// RUNNING -> CRASHED, STOPPED
-	// STOPPING -> STOPPED, CRASHED
-	if status == StatusPending || status == StatusAssigned || status == StatusStarting {
-		return Instance{}, ErrInvalidStateTransition
+	inst.Status = status
+	if health != "" {
+		inst.Health = health
 	}
 
-	inst.Status = status
+	// Observation returned, clear UnknownSince
+	inst.UnknownSince = nil
+
 	if containerID != "" && inst.ContainerID == "" {
 		inst.ContainerID = containerID
 	}
 
+	now := time.Now().UTC()
 	if status == StatusRunning && inst.StartedAt == nil {
-		now := time.Now().UTC()
 		inst.StartedAt = &now
-	}
-
-	if (status == StatusStopped || status == StatusCrashed) && inst.StoppedAt == nil {
-		now := time.Now().UTC()
+	} else if (status == StatusStopped || status == StatusCrashed) && inst.StoppedAt == nil {
 		inst.StoppedAt = &now
 	}
 
 	r.instances[id] = inst.DeepCopy()
 	return inst.DeepCopy(), nil
+}
+
+func (r *Registry) MarkUnknown(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	inst, exists := r.instances[id]
+	if !exists {
+		return ErrNotFound
+	}
+
+	if inst.Status == StatusStopped || inst.Status == StatusCrashed {
+		return nil // terminal, do not mark unknown
+	}
+
+	inst.Status = StatusUnknown
+	if inst.UnknownSince == nil {
+		now := time.Now().UTC()
+		inst.UnknownSince = &now
+	}
+
+	r.instances[id] = inst.DeepCopy()
+	return nil
 }

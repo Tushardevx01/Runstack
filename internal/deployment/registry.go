@@ -124,3 +124,38 @@ func (r *Registry) UpdateState(id string, status DeploymentStatus) error {
 	r.deployments[id] = dep
 	return nil
 }
+
+func (r *Registry) RecordCrash(id string, threshold int) (Deployment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	dep, exists := r.deployments[id]
+	if !exists {
+		return Deployment{}, ErrNotFound
+	}
+
+	dep.ConsecutiveCrashes++
+	if dep.ConsecutiveCrashes >= threshold {
+		dep.Degraded = true
+	}
+
+	r.deployments[id] = dep.DeepCopy()
+	return dep.DeepCopy(), nil
+}
+
+func (r *Registry) ResetCrashCounter(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	dep, exists := r.deployments[id]
+	if !exists {
+		return ErrNotFound
+	}
+
+	dep.ConsecutiveCrashes = 0
+	// We intentionally DO NOT clear Degraded here. It requires manual/explicit intervention to clear.
+	r.deployments[id] = dep.DeepCopy()
+	return nil
+}
+
+const MaxCrashLoopThreshold = 5

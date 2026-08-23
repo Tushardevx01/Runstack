@@ -25,24 +25,24 @@
 
 ## Milestone 7: Application Model & Deployment Specification
 
-- [ ] Application Domain & Registry (Desired state)
-- [ ] Deployment Domain & Registry (Immutable snapshots)
-- [ ] Instance Domain & Registry (Runtime state, separate from Jobs)
-- [ ] REST API for Application CRUD and scaling
-- [ ] CLI Integration (`runstack app create`, `list`, `inspect`)
-- [ ] Scheduler pass for PENDING Instances
+- [x] Application Domain & Registry (Desired state)
+- [x] Deployment Domain & Registry (Immutable snapshots)
+- [x] Instance Domain & Registry (Runtime state, separate from Jobs)
+- [x] REST API for Application CRUD and scaling
+- [x] CLI Integration (`runstack app create`, `list`, `inspect`)
+- [x] Scheduler pass for PENDING Instances
 
 ## Milestone 8: Container Lifecycle & Execution
 
-- [ ] Agent integration with Docker/Podman
-- [ ] Container creation and lifecycle management
-- [ ] Instance status reporting back to Control Plane
+- [x] Agent integration with Docker/Podman
+- [x] Container creation and lifecycle management
+- [x] Instance status reporting back to Control Plane
+- [x] Instance Health & Reconciliation (Step 8C)
 
 ## Future
 
 ### PaaS Features
 - [ ] Application Logs & Metrics
-- [ ] Application Health Probes
 - [ ] Routing / Ingress (PaaS Dashboard)
 - [ ] Rollback & Zero-downtime Deployments
 

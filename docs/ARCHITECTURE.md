@@ -123,3 +123,9 @@ The current architecture is intentionally simplified to provide a reliable found
 Instances are managed by a dedicated `InstanceExecutor` on the Agent.
 Unlike jobs, instances represent long-lived application replicas and possess their own dedicated `ExecutionID`.
 The Agent claims `ASSIGNED` instances, delegates to a `ContainerRuntime` adapter, and actively pushes runtime events back to the Control Plane `UpdateStatus` endpoint securely.
+
+### Instance Health & Reconciliation
+RunStack strictly separates Status (lifecycle), Health (readiness), Node state, and Desired state.
+- **Node Loss (UNKNOWN):** Node offline translates to `UNKNOWN` with an `UnknownSince` timestamp. Only after `InstanceUnknownTimeout` does it become `CRASHED` and replaceable, preventing network partitions from acting like application crashes.
+- **Crash-Loop Breaker:** The `Deployment` tracks `ConsecutiveCrashes`. If the threshold (`MaxCrashLoopThreshold`) is reached, the Deployment becomes `DEGRADED` and the Reconciler pauses replacement to protect infrastructure.
+- **Idempotency:** Repeated Reconciler ticks converge to the same desired state safely.
