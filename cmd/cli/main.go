@@ -45,6 +45,19 @@ func getStatus() error {
 	return nil
 }
 
+func formatBytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
 func getNodes() error {
 	resp, err := http.Get("http://localhost:8080/api/v1/nodes")
 	if err != nil {
@@ -69,10 +82,20 @@ func getNodes() error {
 	fmt.Println("RunStack Nodes")
 	fmt.Println()
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "ID\tHOSTNAME\tCPU\tOS\tSTATUS")
-	fmt.Fprintln(w, "------------------------------------------------")
+	fmt.Fprintln(w, "ID\tHOSTNAME\tCPU\tMEM\tOS\tARCH\tCONTAINER\tSTATUS")
+	fmt.Fprintln(w, "--------------------------------------------------------------------------------")
 	for _, n := range result.Nodes {
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", n.ID, n.Hostname, n.CPUCores, n.OS, n.Status)
+		container := ""
+		if n.Capabilities.HasDocker {
+			container += "docker "
+		}
+		if n.Capabilities.HasPodman {
+			container += "podman"
+		}
+		if container == "" {
+			container = "none"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\n", n.ID, n.Hostname, n.CPUCores, formatBytes(n.Capabilities.TotalMemoryBytes), n.OS, n.Architecture, container, n.Status)
 	}
 	w.Flush()
 
@@ -108,6 +131,12 @@ func getNode(id string) error {
 	fmt.Printf("Architecture:   %s\n", n.Architecture)
 	fmt.Printf("Status:         %s\n", n.Status)
 	fmt.Printf("Last Heartbeat: %s\n", n.LastHeartbeat.Format(time.RFC3339))
+	fmt.Println()
+	fmt.Println("Capabilities:")
+	fmt.Printf("  Total Memory:     %s\n", formatBytes(n.Capabilities.TotalMemoryBytes))
+	fmt.Printf("  Available Memory: %s\n", formatBytes(n.Capabilities.AvailableMemoryBytes))
+	fmt.Printf("  Docker:           %v\n", n.Capabilities.HasDocker)
+	fmt.Printf("  Podman:           %v\n", n.Capabilities.HasPodman)
 
 	return nil
 }

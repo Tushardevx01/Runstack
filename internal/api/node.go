@@ -12,11 +12,12 @@ type NodeHandler struct {
 }
 
 type RegisterRequest struct {
-	NodeID       string `json:"nodeId"`
-	Hostname     string `json:"hostname"`
-	CPUCores     int    `json:"cpuCores"`
-	OS           string `json:"os"`
-	Architecture string `json:"architecture"`
+	NodeID       string            `json:"nodeId"`
+	Hostname     string            `json:"hostname"`
+	CPUCores     int               `json:"cpuCores"`
+	OS           string            `json:"os"`
+	Architecture string            `json:"architecture"`
+	Capabilities node.Capabilities `json:"capabilities"`
 }
 
 type RegisterResponse struct {
@@ -46,6 +47,7 @@ func (h *NodeHandler) Register(w http.ResponseWriter, r *http.Request) {
 		CPUCores:     req.CPUCores,
 		OS:           req.OS,
 		Architecture: req.Architecture,
+		Capabilities: req.Capabilities,
 	}
 
 	registeredNode := h.Registry.Register(n)
@@ -77,9 +79,22 @@ func (h *NodeHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(n)
 }
 
+type HeartbeatRequest struct {
+	Capabilities *node.Capabilities `json:"capabilities,omitempty"`
+}
+
 func (h *NodeHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	n, err := h.Registry.Heartbeat(id)
+
+	var caps *node.Capabilities
+	if r.Body != nil && r.ContentLength > 0 {
+		var req HeartbeatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			caps = req.Capabilities
+		}
+	}
+
+	n, err := h.Registry.Heartbeat(id, caps)
 	if err != nil {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return

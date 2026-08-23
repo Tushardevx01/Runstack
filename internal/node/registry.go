@@ -56,13 +56,16 @@ func (r *Registry) List() []Node {
 	return result
 }
 
-func (r *Registry) Heartbeat(id string) (*Node, error) {
+func (r *Registry) Heartbeat(id string, caps *Capabilities) (*Node, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if n, ok := r.nodes[id]; ok {
 		n.Status = StatusOnline
 		n.LastHeartbeat = time.Now()
+		if caps != nil {
+			n.Capabilities = *caps
+		}
 
 		nodeCopy := *n
 		return &nodeCopy, nil

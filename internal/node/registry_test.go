@@ -70,7 +70,7 @@ func TestRegistry_Heartbeat(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	hb, err := r.Heartbeat("node-1")
+	hb, err := r.Heartbeat("node-1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 			r.Register(Node{ID: "node-1"})
 			r.Get("node-1")
 			r.List()
-			r.Heartbeat("node-1")
+			r.Heartbeat("node-1", nil)
 		}(i)
 	}
 
