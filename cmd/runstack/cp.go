@@ -125,6 +125,14 @@ func runControlPlane() {
 	mux.HandleFunc("GET /api/v1/apps/{id}", appHandler.Get)
 	mux.HandleFunc("PUT /api/v1/apps/{id}", appHandler.Update)
 
+	instanceHandler := &api.InstanceHandler{
+		InstanceRegistry:   instRegistry,
+		DeploymentRegistry: depRegistry,
+	}
+	mux.HandleFunc("GET /api/v1/instances", instanceHandler.List)
+	mux.HandleFunc("POST /api/v1/instances/{id}/claim", instanceHandler.Claim)
+	mux.HandleFunc("POST /api/v1/instances/{id}/status", instanceHandler.ReportStatus)
+
 	server := &http.Server{
 		Addr:              ":8080",
 		Handler:           mux,

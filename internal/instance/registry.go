@@ -108,3 +108,84 @@ func (r *Registry) UpdateState(id string, status InstanceStatus, nodeID string, 
 	r.instances[id] = inst.DeepCopy()
 	return inst.DeepCopy(), nil
 }
+
+// Claim atomically assigns an ExecutionID to an ASSIGNED instance.
+func (r *Registry) Claim(id string, nodeID string) (Instance, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	inst, exists := r.instances[id]
+	if !exists {
+		return Instance{}, ErrNotFound
+	}
+
+	if inst.Status != StatusAssigned {
+		return Instance{}, ErrInvalidStateTransition
+	}
+	if inst.NodeID != nodeID {
+		return Instance{}, errors.New("node ID mismatch")
+	}
+
+	inst.Status = StatusStarting
+	inst.ExecutionID = generateID()
+
+	r.instances[id] = inst.DeepCopy()
+	return inst.DeepCopy(), nil
+}
+
+// ReportStatus safely updates the instance status from the Agent.
+func (r *Registry) ReportStatus(id string, nodeID string, executionID string, status InstanceStatus, containerID string) (Instance, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	inst, exists := r.instances[id]
+	if !exists {
+		return Instance{}, ErrNotFound
+	}
+
+	if inst.NodeID != nodeID {
+		return Instance{}, errors.New("node ID mismatch")
+	}
+	if inst.ExecutionID != executionID {
+		return Instance{}, errors.New("stale execution ID")
+	}
+
+	// Idempotency check
+	if inst.Status == status {
+		if containerID != "" && inst.ContainerID == "" {
+			inst.ContainerID = containerID
+			r.instances[id] = inst.DeepCopy()
+		}
+		return inst.DeepCopy(), nil
+	}
+
+	if inst.Status == StatusStopped || inst.Status == StatusCrashed {
+		return Instance{}, ErrInvalidStateTransition
+	}
+
+	// Allowed Agent transitions:
+	// STARTING -> RUNNING, CRASHED, STOPPED
+	// RUNNING -> CRASHED, STOPPED
+	// STOPPING -> STOPPED, CRASHED
+	if status == StatusPending || status == StatusAssigned || status == StatusStarting {
+		return Instance{}, ErrInvalidStateTransition
+	}
+
+	inst.Status = status
+	if containerID != "" && inst.ContainerID == "" {
+		inst.ContainerID = containerID
+	}
+
+	if status == StatusRunning && inst.StartedAt == nil {
+		now := time.Now().UTC()
+		inst.StartedAt = &now
+	}
+
+	if (status == StatusStopped || status == StatusCrashed) && inst.StoppedAt == nil {
+		now := time.Now().UTC()
+		inst.StoppedAt = &now
+	}
+
+	r.instances[id] = inst.DeepCopy()
+	return inst.DeepCopy(), nil
+}

@@ -124,3 +124,9 @@ The agent:
 - Exactly-once physical execution is not guaranteed. Network partitions can result in duplicate execution.
 - Agent processes cannot be remotely killed after Control Plane recovery.
 - Jobs and events remain in memory indefinitely (no garbage collection).
+
+## Step 8B: Instance Lifecycle Execution
+Instances use a **dedicated ExecutionID** distinct from Jobs.
+The Control Plane is responsible for `ExecutionID` generation via the `POST /api/v1/instances/{id}/claim` endpoint.
+The Agent manages long-running applications using `InstanceExecutor`, polling `ASSIGNED` instances, claiming them, and calling the generic `ContainerRuntime` interface. Status changes are securely pushed to `POST /api/v1/instances/{id}/status`.
+The runtime boundary is maintained.

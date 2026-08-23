@@ -13,7 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Tushardevx01/runstack/internal/api"
+	"github.com/Tushardevx01/runstack/internal/executor"
 	"github.com/Tushardevx01/runstack/internal/node"
+	"github.com/Tushardevx01/runstack/internal/runtime/docker"
 	"github.com/Tushardevx01/runstack/internal/sysinfo"
 )
 
@@ -154,6 +157,13 @@ func runAgent() {
 			}
 		}
 	}()
+
+	apiClient := api.NewClient("http://localhost:8080")
+
+	cr := docker.New()
+	instanceExec := executor.NewInstanceExecutor(nodeID, apiClient, cr)
+	instanceExec.Start()
+	defer instanceExec.Stop()
 
 	startJobPolling(ctx, nodeID)
 }

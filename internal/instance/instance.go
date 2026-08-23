@@ -11,6 +11,7 @@ const (
 	StatusAssigned InstanceStatus = "ASSIGNED"
 	StatusStarting InstanceStatus = "STARTING"
 	StatusRunning  InstanceStatus = "RUNNING"
+	StatusStopping InstanceStatus = "STOPPING"
 	StatusCrashed  InstanceStatus = "CRASHED"
 	StatusStopped  InstanceStatus = "STOPPED"
 )
@@ -20,6 +21,7 @@ type Instance struct {
 	ApplicationID string         `json:"application_id"`
 	DeploymentID  string         `json:"deployment_id"`
 	NodeID        string         `json:"node_id,omitempty"`
+	ExecutionID   string         `json:"execution_id,omitempty"`
 	Status        InstanceStatus `json:"status"`
 	ContainerID   string         `json:"container_id,omitempty"`
 	Health        string         `json:"health,omitempty"`

@@ -118,3 +118,8 @@ The current architecture is intentionally simplified to provide a reliable found
 - **Bounded Retry Budget:** All failures (application and infrastructure) are evaluated against `MaxRetries`. Maximum total executions = `MaxRetries + 1`.
 - **No Exactly-Once Execution:** Network partitions can result in duplicate physical execution. The system provides execution-aware *result fencing* but not physical execution prevention.
 - **Update() API Hardened:** The PATCH endpoint cannot bypass domain invariants. Terminal transitions (`PENDING→FAILED`, `ASSIGNED→FAILED`) and execution field manipulation are blocked through the public API.
+
+### Instance Lifecycle Execution
+Instances are managed by a dedicated `InstanceExecutor` on the Agent.
+Unlike jobs, instances represent long-lived application replicas and possess their own dedicated `ExecutionID`.
+The Agent claims `ASSIGNED` instances, delegates to a `ContainerRuntime` adapter, and actively pushes runtime events back to the Control Plane `UpdateStatus` endpoint securely.

@@ -1,6 +1,6 @@
 # Binaries
 /bin/
-runstack
+/runstack
 
 # Logs
 *.log
