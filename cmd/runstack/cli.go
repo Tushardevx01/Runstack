@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -113,7 +114,7 @@ func getNode(id string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("node not found")
+		return fmt.Errorf("node not found: %s", id)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -148,8 +149,36 @@ type ListJobsResponse struct {
 	Jobs []job.Job `json:"jobs"`
 }
 
-func getJobs() error {
-	resp, err := http.Get("http://localhost:8080/api/v1/jobs")
+func getJobs(args []string) error {
+	statusFilter := ""
+	nodeFilter := ""
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--status" && i+1 < len(args) {
+			statusFilter = args[i+1]
+			i++
+		} else if args[i] == "--node" && i+1 < len(args) {
+			nodeFilter = args[i+1]
+			i++
+		}
+	}
+
+	urlStr := "http://localhost:8080/api/v1/jobs"
+	query := ""
+	if statusFilter != "" {
+		query += "status=" + statusFilter
+	}
+	if nodeFilter != "" {
+		if query != "" {
+			query += "&"
+		}
+		query += "assignedNodeId=" + nodeFilter
+	}
+	if query != "" {
+		urlStr += "?" + query
+	}
+
+	resp, err := http.Get(urlStr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to control plane: %w", err)
 	}
@@ -194,7 +223,7 @@ func getJob(id string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("job not found")
+		return fmt.Errorf("job not found: %s", id)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -347,13 +376,25 @@ func runDoctor() {
 		fmt.Println("  Podman            ✗")
 	}
 
-	fmt.Println("\nScheduler           ✓ running")
+	fmt.Println("\nScheduler           ✓ configured")
 
 	fmt.Println("\nOverall")
 	if healthy {
 		fmt.Println("                    ✓ healthy")
 	} else {
 		fmt.Println("                    ✗ degraded")
+	}
+}
+
+func printError(err error) {
+	msg := err.Error()
+	if strings.Contains(msg, "connection refused") || strings.Contains(msg, "failed to connect") {
+		fmt.Println("Error: unable to connect to RunStack Control Plane at localhost:8080")
+		fmt.Println("Hint: start the Control Plane with `make control-plane`")
+	} else if strings.Contains(msg, "status 404") {
+		fmt.Println("Error: resource not found")
+	} else {
+		fmt.Printf("Error: %v\n", err)
 	}
 }
 
@@ -365,10 +406,11 @@ func runCLI(args []string) {
 		fmt.Println("  cp        Start Control Plane")
 		fmt.Println("  agent     Start Agent")
 		fmt.Println("  status    Show control plane status")
+		fmt.Println("  version   Show CLI version")
 		fmt.Println("  doctor    Diagnose system health")
 		fmt.Println("  nodes     List all registered nodes")
 		fmt.Println("  node <id> Show details of a specific node")
-		fmt.Println("  jobs      List all jobs")
+		fmt.Println("  jobs      List all jobs (flags: --status, --node)")
 		fmt.Println("  job <id>  Show details of a specific job")
 		os.Exit(1)
 	}
@@ -377,14 +419,16 @@ func runCLI(args []string) {
 	switch command {
 	case "status":
 		if err := getStatus(); err != nil {
-			fmt.Printf("Error: %v\n", err)
+			printError(err)
 			os.Exit(1)
 		}
+	case "version":
+		fmt.Println("RunStack v0.1.0")
 	case "doctor":
 		runDoctor()
 	case "nodes":
 		if err := getNodes(); err != nil {
-			fmt.Printf("Error: %v\n", err)
+			printError(err)
 			os.Exit(1)
 		}
 	case "node":
@@ -393,12 +437,12 @@ func runCLI(args []string) {
 			os.Exit(1)
 		}
 		if err := getNode(args[1]); err != nil {
-			fmt.Printf("Error: %v\n", err)
+			printError(err)
 			os.Exit(1)
 		}
 	case "jobs":
-		if err := getJobs(); err != nil {
-			fmt.Printf("Error: %v\n", err)
+		if err := getJobs(args[1:]); err != nil {
+			printError(err)
 			os.Exit(1)
 		}
 	case "job":
@@ -407,7 +451,7 @@ func runCLI(args []string) {
 			os.Exit(1)
 		}
 		if err := getJob(args[1]); err != nil {
-			fmt.Printf("Error: %v\n", err)
+			printError(err)
 			os.Exit(1)
 		}
 	default:

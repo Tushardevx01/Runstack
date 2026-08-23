@@ -43,9 +43,7 @@ The codebase is organized into cleanly separated domains to prevent architectura
 
 ```text
 cmd/
-├── agent/            # The Agent binary. Responsible for execution, polling, and heartbeats.
-├── cli/              # The RunStack CLI (runstack jobs, runstack nodes).
-└── control-plane/    # The central server. Bootstraps the registries, scheduler, and API.
+└── runstack/         # The unified RunStack binary containing CP, Agent, and CLI logic.
 
 internal/
 ├── api/              # HTTP Handlers. Keeps web-layer logic thin and delegates to registries.
@@ -93,3 +91,15 @@ The Node Registry contains a background loop (`startOfflineDetector`) that check
 
 ### 3. Claim Atomicity
 Agents cannot arbitrarily transition an `ASSIGNED` job to `RUNNING` on their own local copy. They must hit `POST /claim`. The Job Registry uses a `sync.RWMutex` to lock the state, verify the Job is still `ASSIGNED` to the requesting `NodeID`, update to `RUNNING`, and unlock. This intrinsically prevents distributed duplicate execution.
+
+## V1 Architectural Limitations
+
+The current architecture is intentionally simplified to provide a reliable foundation. The following constraints must be preserved until explicitly addressed in future milestones:
+
+- **In-Memory State:** Registries live entirely in memory. Restarting the Control Plane deletes all nodes, jobs, and history. There is no database or persistence.
+- **One-Job-At-A-Time:** The Agent executes exactly one job at a time. There are no worker pools.
+- **`strings.Fields()` Parsing:** Commands are split into arguments purely by spaces. Quoted shell arguments (`echo "hello world"`) are not supported. This avoids invoking arbitrary shell interpreters (like `/bin/sh`) which reduces injection risks.
+- **No Agent Web Server:** The Agent does not listen for incoming connections. All interaction is via the Agent polling the Control Plane.
+- **Control Plane as Source of Truth:** Agents never own their state. They cannot unilaterally execute; they must `Claim`.
+- **First-Online-Node Scheduling:** The Scheduler deterministically picks the first `ONLINE` node. It is not resource-aware yet.
+- **No Leases or Rescheduling:** If an Agent dies while `RUNNING` a job, the job is stranded. There are no timeouts or retries.

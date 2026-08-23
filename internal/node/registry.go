@@ -2,6 +2,7 @@ package node
 
 import (
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -21,7 +22,6 @@ func NewRegistry() *Registry {
 
 func (r *Registry) Register(n Node) *Node {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	n.Status = StatusOnline
 	n.LastHeartbeat = time.Now()
@@ -31,6 +31,9 @@ func (r *Registry) Register(n Node) *Node {
 
 	// Return a copy to prevent external mutation
 	nodeCopy := *nodePtr
+	r.mu.Unlock()
+
+	slog.Info("Node registered", "node_id", n.ID)
 	return &nodeCopy
 }
 
@@ -58,9 +61,9 @@ func (r *Registry) List() []Node {
 
 func (r *Registry) Heartbeat(id string, caps *Capabilities) (*Node, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	if n, ok := r.nodes[id]; ok {
+		isNewOnline := n.Status != StatusOnline
 		n.Status = StatusOnline
 		n.LastHeartbeat = time.Now()
 		if caps != nil {
@@ -68,19 +71,33 @@ func (r *Registry) Heartbeat(id string, caps *Capabilities) (*Node, error) {
 		}
 
 		nodeCopy := *n
+		r.mu.Unlock()
+
+		if isNewOnline {
+			slog.Info("Node came back online", "node_id", id)
+		}
 		return &nodeCopy, nil
 	}
+	r.mu.Unlock()
 	return nil, ErrNodeNotFound
 }
 
 func (r *Registry) MarkOfflineNodes(timeout time.Duration) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
+	var offlineNodes []string
 	now := time.Now()
 	for _, n := range r.nodes {
 		if now.Sub(n.LastHeartbeat) > timeout {
-			n.Status = StatusOffline
+			if n.Status != StatusOffline {
+				n.Status = StatusOffline
+				offlineNodes = append(offlineNodes, n.ID)
+			}
 		}
+	}
+	r.mu.Unlock()
+
+	for _, id := range offlineNodes {
+		slog.Warn("Node went offline", "node_id", id)
 	}
 }

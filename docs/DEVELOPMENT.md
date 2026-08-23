@@ -10,46 +10,40 @@ Ensure you have Go installed (minimum recommended: Go 1.22+).
 
 ## Standard Workflow
 
-Before creating a commit, you **must** run the following suite to ensure technical health and thread safety:
+RunStack includes a unified Makefile. Run `make help` to see all targets.
+Before creating a commit, you **must** run the validation suite to ensure technical health and thread safety:
 
 ```bash
-# Format your code
-gofmt -w .
-
-# Run all unit tests
-go test ./...
-
-# Run race detector (CRITICAL for registry testing)
-go test -race ./...
-
-# Vet codebase
-go vet ./...
-
-# Ensure all binaries compile
-go build ./...
-
-# Ensure no syntax whitespace issues
-git diff --check
+make check
 ```
+This automatically runs formatting (`gofmt`), linting (`go vet`), unit tests (`go test`), race detection (`go test -race`), and binary compilation.
 
 ## Running Components Locally
 
+To spin up the system locally for development, build the project:
+
+```bash
+make dev
+```
+
 **Control Plane:**
 ```bash
-go run ./cmd/control-plane
+make control-plane
 ```
 
 **Agent:**
 (Ensure the control plane is running first!)
 ```bash
-go run ./cmd/agent
+make agent
 ```
 
 **CLI Tool:**
+The unified CLI is available in the `bin/` directory after running `make build` or `make dev`.
 ```bash
-go run ./cmd/cli nodes
-go run ./cmd/cli jobs
-go run ./cmd/cli job <job-id>
+./bin/runstack doctor
+./bin/runstack nodes
+./bin/runstack jobs --status running
+./bin/runstack job <job-id>
 ```
 
 ## Integration Testing

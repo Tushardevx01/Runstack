@@ -45,31 +45,40 @@ SUCCEEDED / FAILED (Agent Report)
 
 ## Running RunStack
 
-1. **Start the Control Plane:**
+RunStack provides a unified CLI and a `Makefile` for streamlined development.
+
+1. **Build the project:**
    ```bash
-   go run ./cmd/control-plane
+   make dev
    ```
 
-2. **Start an Agent:**
+2. **Start the Control Plane:**
    ```bash
-   go run ./cmd/agent
+   make control-plane
    ```
 
-3. **Check nodes via CLI:**
+3. **Start an Agent:**
    ```bash
-   go run ./cmd/cli nodes
+   make agent
    ```
 
-4. **Submit a Job:**
+4. **Check nodes via CLI:**
+   ```bash
+   ./bin/runstack nodes
+   ```
+   *You can also run a health check using `./bin/runstack doctor`.*
+
+5. **Submit a Job:**
    ```bash
    curl -X POST http://localhost:8080/api/v1/jobs \
         -H "Content-Type: application/json" \
         -d '{"name":"my-job","command":"echo hello_world"}'
    ```
 
-5. **View the Job Result:**
+6. **View the Job Result:**
    ```bash
-   go run ./cmd/cli job <job-id>
+   ./bin/runstack jobs --status succeeded
+   ./bin/runstack job <job-id>
    ```
 
 ## Current Limitations (V1)
@@ -92,11 +101,8 @@ For a full breakdown of the architecture, roadmap, and development guidelines, p
 
 ## Development Commands
 
-Run these to validate the codebase before committing:
+Run `make help` to see all available commands.
+Before committing, always validate your changes:
 ```bash
-go test ./...
-go test -race ./...
-go vet ./...
-go build ./...
-gofmt -w .
+make check
 ```

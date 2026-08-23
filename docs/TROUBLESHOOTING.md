@@ -18,7 +18,7 @@ bind: address already in use
 Registration failed: connection refused. Retrying in 5 seconds...
 ```
 **Cause:** The Control Plane is not running or is listening on a different port/interface.
-**Solution:** Start the Control Plane (`go run ./cmd/control-plane`) and ensure it's binding to `8080`.
+**Solution:** Start the Control Plane (`make control-plane`) and ensure it's binding to `8080`.
 
 ### 4. Integration Tests Hanging or Failing Deterministically
 **Cause:** 

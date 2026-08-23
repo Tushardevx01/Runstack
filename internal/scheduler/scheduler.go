@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"log"
+	"log/slog"
 	"sort"
 
 	"github.com/Tushardevx01/runstack/internal/job"
@@ -53,7 +53,7 @@ func (s *Scheduler) SchedulePendingJobs() error {
 			})
 
 			if err == nil {
-				log.Printf("Assigned job %s to node %s", j.ID, nodeID)
+				slog.Info("job assigned", "job_id", j.ID, "node_id", nodeID)
 			}
 		}
 	}

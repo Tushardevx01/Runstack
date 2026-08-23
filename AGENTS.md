@@ -15,13 +15,9 @@ This file is intended for AI coding assistants (Gemini, Codex, Claude Code, etc.
 
 ## Development Rules
 
-Always run the following commands to validate your changes:
+Always run the following command to validate your changes:
 ```bash
-go test ./...
-go test -race ./...
-go vet ./...
-go build ./...
-gofmt -w .
+make check
 ```
 
 - **Never** commit generated binaries or logs.

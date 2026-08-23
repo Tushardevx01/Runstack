@@ -1,0 +1,16 @@
+# Binaries
+/bin/
+runstack
+
+# Logs
+*.log
+
+# Temporary integration-test artifacts
+/tmp/
+*.test
+
+# OS/editor junk
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -26,6 +26,9 @@ Deterministic scheduler. A background loop assigning `PENDING` jobs to the first
 ### Milestone 5
 Agent executor. Agents poll for assignments, natively claim jobs, execute them safely via `os/exec`, and report structured results with idempotency and retry handling.
 
+### Developer Experience Refinement
+Unified binary (`cmd/runstack`), comprehensive `Makefile`, structured `log/slog` logging, and `runstack doctor` CLI diagnostics.
+
 ## Current Job Lifecycle
 
 ```text

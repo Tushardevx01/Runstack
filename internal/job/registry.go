@@ -2,6 +2,7 @@ package job
 
 import (
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -100,17 +101,19 @@ func (r *Registry) Update(id string, params UpdateParams) (*Job, error) {
 
 func (r *Registry) Claim(id, nodeID string) (*Job, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	j, ok := r.jobs[id]
 	if !ok {
+		r.mu.Unlock()
 		return nil, ErrJobNotFound
 	}
 
 	if j.Status != StatusAssigned {
+		r.mu.Unlock()
 		return nil, ErrInvalidTransition
 	}
 	if j.AssignedNodeID != nodeID {
+		r.mu.Unlock()
 		return nil, errors.New("job assigned to another node")
 	}
 
@@ -119,31 +122,38 @@ func (r *Registry) Claim(id, nodeID string) (*Job, error) {
 	j.StartedAt = &now
 
 	jobCopy := *j
+	r.mu.Unlock()
+
+	slog.Info("job claimed", "job_id", id, "node_id", nodeID)
 	return &jobCopy, nil
 }
 
 func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	j, ok := r.jobs[id]
 	if !ok {
+		r.mu.Unlock()
 		return nil, ErrJobNotFound
 	}
 
 	// Idempotency: if already succeeded or failed by this node, accept it without modifying again.
 	if j.Status == StatusSucceeded || j.Status == StatusFailed {
 		if j.AssignedNodeID != nodeID {
+			r.mu.Unlock()
 			return nil, errors.New("job assigned to another node")
 		}
 		jobCopy := *j
+		r.mu.Unlock()
 		return &jobCopy, nil
 	}
 
 	if j.Status != StatusRunning {
+		r.mu.Unlock()
 		return nil, ErrInvalidTransition
 	}
 	if j.AssignedNodeID != nodeID {
+		r.mu.Unlock()
 		return nil, errors.New("job assigned to another node")
 	}
 
@@ -157,5 +167,8 @@ func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) 
 	j.Result = &res
 
 	jobCopy := *j
+	r.mu.Unlock()
+
+	slog.Info("job result reported", "job_id", id, "status", j.Status, "exit_code", res.ExitCode)
 	return &jobCopy, nil
 }
