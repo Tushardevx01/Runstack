@@ -37,15 +37,16 @@ func startJobPolling(ctx context.Context, nodeID string) {
 			// Process first job (v1 executes one at a time)
 			j := jobs[0]
 
-			if err := claimJob(j.ID, nodeID); err != nil {
+			execID, err := claimJob(j.ID, nodeID)
+			if err != nil {
 				slog.Error("Failed to claim job", "job_id", j.ID, "error", err)
 				continue
 			}
 
-			slog.Info("job execution started", "job_id", j.ID, "command", j.Command)
+			slog.Info("job execution started", "job_id", j.ID, "execution_id", execID, "command", j.Command)
 			res := executeJob(ctx, j)
 
-			reportResultWithRetry(ctx, j.ID, nodeID, res)
+			reportResultWithRetry(ctx, j.ID, nodeID, execID, res)
 		}
 	}
 }
@@ -71,7 +72,7 @@ func fetchAssignedJobs(nodeID string) ([]job.Job, error) {
 	return parsed.Jobs, nil
 }
 
-func claimJob(jobID, nodeID string) error {
+func claimJob(jobID, nodeID string) (string, error) {
 	payload, _ := json.Marshal(map[string]string{
 		"nodeId": nodeID,
 	})
@@ -82,14 +83,22 @@ func claimJob(jobID, nodeID string) error {
 		bytes.NewBuffer(payload),
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status claiming job: %d", resp.StatusCode)
+		return "", fmt.Errorf("unexpected status claiming job: %d", resp.StatusCode)
 	}
-	return nil
+
+	var parsed struct {
+		ExecutionID string `json:"executionId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return "", err
+	}
+
+	return parsed.ExecutionID, nil
 }
 
 // executeJob natively parses the execution string by splitting spaces.
@@ -130,10 +139,11 @@ func executeJob(ctx context.Context, j job.Job) job.JobResult {
 	}
 }
 
-func reportResultWithRetry(ctx context.Context, jobID, nodeID string, res job.JobResult) {
+func reportResultWithRetry(ctx context.Context, jobID, nodeID, execID string, res job.JobResult) {
 	payload, _ := json.Marshal(map[string]interface{}{
-		"nodeId": nodeID,
-		"result": res,
+		"nodeId":      nodeID,
+		"executionId": execID,
+		"result":      res,
 	})
 
 	for i := 0; i < 5; i++ {
@@ -146,7 +156,11 @@ func reportResultWithRetry(ctx context.Context, jobID, nodeID string, res job.Jo
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				slog.Info("job completed", "job_id", jobID, "exit_code", res.ExitCode)
+				slog.Info("job completed", "job_id", jobID, "execution_id", execID, "exit_code", res.ExitCode)
+				return
+			}
+			if resp.StatusCode == http.StatusConflict {
+				slog.Warn("Stale execution result rejected by Control Plane", "job_id", jobID, "execution_id", execID)
 				return
 			}
 			slog.Warn("Failed to report result. Retrying...", "status", resp.StatusCode)

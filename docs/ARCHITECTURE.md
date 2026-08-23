@@ -94,8 +94,10 @@ Every legitimate state transition automatically produces a chronological `JobEve
 ### 2. Node Offline Detection
 The Node Registry contains a background loop (`startOfflineDetector`) that checks all nodes every 30 seconds. If a node hasn't sent a heartbeat within the threshold, it is automatically marked `OFFLINE`.
 
-### 3. Claim Atomicity
-Agents cannot arbitrarily transition an `ASSIGNED` job to `RUNNING` on their own local copy. They must hit `POST /claim`. The Job Registry uses a `sync.RWMutex` to lock the state, verify the Job is still `ASSIGNED` to the requesting `NodeID`, update to `RUNNING`, and unlock. This intrinsically prevents distributed duplicate execution.
+### 3. Claim Atomicity & Execution Ownership
+Agents cannot arbitrarily transition an `ASSIGNED` job to `RUNNING` on their own local copy. They must hit `POST /claim`. The Job Registry uses a `sync.RWMutex` to lock the state, verify the Job is still `ASSIGNED` to the requesting `NodeID`, update to `RUNNING`, generate a unique `ExecutionID`, and unlock. This intrinsically prevents distributed duplicate execution initiation.
+
+The `ExecutionID` acts as a cryptographically random fencing token. When the agent finishes executing the job, it must provide the `ExecutionID` back to the Control Plane. If the job was recovered and reassigned while the agent was disconnected, the Control Plane will reject the stale agent's result, providing strict execution-aware result fencing.
 
 ## V1 Architectural Limitations
 

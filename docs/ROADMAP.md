@@ -19,9 +19,10 @@
 ## Milestone 8: Reliability & Failure Recovery
 
 - [x] Job Event History (in-memory)
-- [ ] Node-aware failure recovery
+- [x] Node-aware failure recovery
 - [ ] Automatic rescheduling for dead nodes
-- [ ] Job leases / execution timeouts
+- [x] Execution timeouts
+- [x] Execution ownership and result fencing
 - [ ] Retry policy specification
 - [ ] Agent crash recovery
 

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -97,14 +98,12 @@ func TestJobHandler_ReportResult(t *testing.T) {
 	nodeRegistry.Register(node.Node{ID: "node-1"})
 	j := jobRegistry.Create("test-result", "echo 1")
 
-	jobRegistry.Claim(j.ID, "node-1") // Wait, this needs the job to be ASSIGNED first
-
 	status := job.StatusAssigned
 	nodeID := "node-1"
 	jobRegistry.Update(j.ID, job.UpdateParams{Status: &status, AssignedNodeID: &nodeID})
-	jobRegistry.Claim(j.ID, "node-1")
+	claimed, _ := jobRegistry.Claim(j.ID, "node-1")
 
-	reqBody := `{"nodeId": "node-1", "result": {"exitCode": 0, "stdout": "ok", "stderr": ""}}`
+	reqBody := fmt.Sprintf(`{"nodeId": "node-1", "executionId": "%s", "result": {"exitCode": 0, "stdout": "ok", "stderr": ""}}`, claimed.ExecutionID)
 	req := httptest.NewRequest("POST", "/api/v1/jobs/"+j.ID+"/result", bytes.NewBufferString(reqBody))
 	req.SetPathValue("id", j.ID)
 	w := httptest.NewRecorder()

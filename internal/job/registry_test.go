@@ -116,38 +116,49 @@ func TestRegistry_Claim(t *testing.T) {
 
 func TestRegistry_ReportResult(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo 1")
 
-	status := StatusAssigned
+	j := r.Create("test-job", "echo test")
 	nodeID := "node-1"
-	r.Update(j.ID, UpdateParams{Status: &status, AssignedNodeID: &nodeID})
-	r.Claim(j.ID, "node-1")
+	statusAssigned := StatusAssigned
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 
-	res := JobResult{ExitCode: 0, Stdout: "done"}
+	claimed, _ := r.Claim(j.ID, "node-1")
+	execID := claimed.ExecutionID
 
-	// Report with wrong node
-	_, err := r.ReportResult(j.ID, "node-2", res)
-	if err == nil {
-		t.Errorf("expected error when reporting with wrong node")
+	res := JobResult{
+		ExitCode: 0,
+		Stdout:   "test",
 	}
 
-	// Successful report
-	finished, err := r.ReportResult(j.ID, "node-1", res)
+	_, err := r.ReportResult(j.ID, "node-2", execID, res)
+	if err == nil {
+		t.Fatalf("expected error reporting from wrong node")
+	}
+
+	finished, err := r.ReportResult(j.ID, "node-1", execID, res)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if finished.Status != StatusSucceeded || finished.CompletedAt == nil || finished.Result.Stdout != "done" {
-		t.Errorf("expected status SUCCEEDED and Result set, got %+v", finished)
+
+	if finished.Status != StatusSucceeded {
+		t.Fatalf("expected status %s, got %s", StatusSucceeded, finished.Status)
+	}
+	if finished.Result.Stdout != "test" {
+		t.Fatalf("expected stdout 'test', got %s", finished.Result.Stdout)
+	}
+	if finished.CompletedAt == nil {
+		t.Fatalf("expected CompletedAt to be set")
 	}
 
-	// Failure report
-	j2 := r.Create("fail", "exit 1")
-	r.Update(j2.ID, UpdateParams{Status: &status, AssignedNodeID: &nodeID})
-	r.Claim(j2.ID, "node-1")
+	// Test failing result
+	j2 := r.Create("test-fail", "exit 1")
+	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+	claimed2, _ := r.Claim(j2.ID, "node-1")
+	execID2 := claimed2.ExecutionID
 
-	failed, _ := r.ReportResult(j2.ID, "node-1", JobResult{ExitCode: 1, Error: "fail"})
+	failed, _ := r.ReportResult(j2.ID, "node-1", execID2, JobResult{ExitCode: 1, Error: "fail"})
 	if failed.Status != StatusFailed {
-		t.Errorf("expected status FAILED")
+		t.Fatalf("expected status %s, got %s", StatusFailed, failed.Status)
 	}
 }
 
@@ -180,21 +191,21 @@ func TestRegistry_EventHistory(t *testing.T) {
 	}
 
 	// 2. Claim
-	_, _ = r.Claim(j.ID, nodeID)
+	j, _ = r.Claim(j.ID, nodeID)
 	events, _ = r.GetEvents(j.ID)
 	if len(events) != 3 || events[2].Type != EventClaimed {
 		t.Fatalf("expected CLAIMED event, got %v", events)
 	}
 
 	// 3. Success
-	_, _ = r.ReportResult(j.ID, nodeID, JobResult{ExitCode: 0, Stdout: "done"})
+	_, _ = r.ReportResult(j.ID, nodeID, j.ExecutionID, JobResult{ExitCode: 0, Stdout: "done"})
 	events, _ = r.GetEvents(j.ID)
 	if len(events) != 4 || events[3].Type != EventSucceeded {
 		t.Fatalf("expected SUCCEEDED event, got %v", events)
 	}
 
 	// 4. Idempotent result should NOT duplicate event
-	_, _ = r.ReportResult(j.ID, nodeID, JobResult{ExitCode: 0, Stdout: "done"})
+	_, _ = r.ReportResult(j.ID, nodeID, j.ExecutionID, JobResult{ExitCode: 0, Stdout: "done"})
 	events, _ = r.GetEvents(j.ID)
 	if len(events) != 4 {
 		t.Fatalf("expected exactly 4 events after idempotent result, got %d", len(events))
@@ -215,9 +226,9 @@ func TestRegistry_EventHistory_Failure(t *testing.T) {
 	statusAssigned := StatusAssigned
 	nodeID := "node-1"
 	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
-	r.Claim(j.ID, nodeID)
+	j, _ = r.Claim(j.ID, nodeID)
 
-	r.ReportResult(j.ID, nodeID, JobResult{ExitCode: 1, Stdout: "fail"})
+	r.ReportResult(j.ID, nodeID, j.ExecutionID, JobResult{ExitCode: 1, Stdout: "fail"})
 
 	events, _ := r.GetEvents(j.ID)
 	if len(events) != 4 || events[3].Type != EventFailed {
@@ -237,9 +248,9 @@ func TestRegistry_RecoverExecutionTimeouts(t *testing.T) {
 	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 	r.Update(j3.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 
-	r.Claim(j1.ID, nodeID)
-	r.Claim(j2.ID, nodeID)
-	r.Claim(j3.ID, nodeID)
+	j1, _ = r.Claim(j1.ID, nodeID)
+	j2, _ = r.Claim(j2.ID, nodeID)
+	j3, _ = r.Claim(j3.ID, nodeID)
 
 	// Make j1 very stale
 	staleTime := time.Now().UTC().Add(-60 * time.Second)
@@ -249,7 +260,7 @@ func TestRegistry_RecoverExecutionTimeouts(t *testing.T) {
 
 	// j2 is fresh, StartedAt is now (default from Claim)
 	// j3 will be completed
-	r.ReportResult(j3.ID, nodeID, JobResult{ExitCode: 0, Stdout: "done"})
+	r.ReportResult(j3.ID, nodeID, j3.ExecutionID, JobResult{ExitCode: 0, Stdout: "done"})
 
 	recovered := r.RecoverExecutionTimeouts(30 * time.Second)
 	if recovered != 1 {
@@ -261,7 +272,7 @@ func TestRegistry_RecoverExecutionTimeouts(t *testing.T) {
 	if j1After.Status != StatusPending {
 		t.Fatalf("expected j1 PENDING, got %s", j1After.Status)
 	}
-	if j1After.AssignedNodeID != "" || j1After.StartedAt != nil {
+	if j1After.AssignedNodeID != "" || j1After.StartedAt != nil || j1After.ExecutionID != "" {
 		t.Fatalf("expected j1 node and startedAt cleared")
 	}
 	events1, _ := r.GetEvents(j1.ID)
@@ -322,8 +333,8 @@ func TestRegistry_RecoverExecutionTimeouts_WrongState(t *testing.T) {
 	r.Update(jAssigned.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 	r.Update(jFailed.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 
-	r.Claim(jFailed.ID, nodeID)
-	r.ReportResult(jFailed.ID, nodeID, JobResult{ExitCode: 1, Stdout: ""})
+	jFailed, _ = r.Claim(jFailed.ID, nodeID)
+	r.ReportResult(jFailed.ID, nodeID, jFailed.ExecutionID, JobResult{ExitCode: 1, Stdout: ""})
 
 	// Recover should skip them
 	recovered := r.RecoverExecutionTimeouts(0 * time.Second)
@@ -341,7 +352,7 @@ func TestRegistry_RecoverExecutionTimeouts_Concurrency(t *testing.T) {
 		j := r.Create(fmt.Sprintf("job-%d", i), "echo")
 		statusAssigned := StatusAssigned
 		r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
-		r.Claim(j.ID, nodeID)
+		j, _ = r.Claim(j.ID, nodeID)
 
 		// Force them to be slightly stale
 		staleTime := time.Now().UTC().Add(-2 * time.Second)
@@ -374,8 +385,8 @@ func TestRegistry_RecoverNodeJobs(t *testing.T) {
 	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &node1})
 	r.Update(j3.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &node2})
 
-	r.Claim(j1.ID, node1)
-	r.Claim(j3.ID, node2)
+	j1, _ = r.Claim(j1.ID, node1)
+	j3, _ = r.Claim(j3.ID, node2)
 
 	// Recover node-1 jobs
 	recovered := r.RecoverNodeJobs(node1, "node offline")
@@ -384,12 +395,12 @@ func TestRegistry_RecoverNodeJobs(t *testing.T) {
 	}
 
 	j1After, _ := r.Get(j1.ID)
-	if j1After.Status != StatusPending || j1After.AssignedNodeID != "" || j1After.StartedAt != nil {
+	if j1After.Status != StatusPending || j1After.AssignedNodeID != "" || j1After.StartedAt != nil || j1After.ExecutionID != "" {
 		t.Fatalf("j1 not correctly recovered: %+v", j1After)
 	}
 
 	j2After, _ := r.Get(j2.ID)
-	if j2After.Status != StatusPending || j2After.AssignedNodeID != "" {
+	if j2After.Status != StatusPending || j2After.AssignedNodeID != "" || j2After.ExecutionID != "" {
 		t.Fatalf("j2 not correctly recovered: %+v", j2After)
 	}
 

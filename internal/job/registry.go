@@ -34,7 +34,7 @@ func (r *Registry) Create(name, command string) *Job {
 	}
 
 	r.jobs[j.ID] = j
-	r.appendEvent(j.ID, EventCreated, "", StatusPending, "", "Job created")
+	r.appendEvent(j.ID, EventCreated, "", StatusPending, "", "", "Job created")
 
 	jobCopy := *j
 	return &jobCopy
@@ -62,16 +62,17 @@ func (r *Registry) List() []Job {
 	return result
 }
 
-func (r *Registry) appendEvent(jobID string, eventType JobEventType, from, to Status, nodeID string, reason string) {
+func (r *Registry) appendEvent(jobID string, eventType JobEventType, from, to Status, nodeID string, executionID string, reason string) {
 	evt := JobEvent{
-		ID:        fmt.Sprintf("%s-evt-%d", jobID, len(r.events[jobID])+1),
-		JobID:     jobID,
-		Timestamp: time.Now().UTC(),
-		Type:      eventType,
-		From:      from,
-		To:        to,
-		NodeID:    nodeID,
-		Reason:    reason,
+		ID:          fmt.Sprintf("%s-evt-%d", jobID, len(r.events[jobID])+1),
+		JobID:       jobID,
+		Timestamp:   time.Now().UTC(),
+		Type:        eventType,
+		From:        from,
+		To:          to,
+		NodeID:      nodeID,
+		ExecutionID: executionID,
+		Reason:      reason,
 	}
 	r.events[jobID] = append(r.events[jobID], evt)
 }
@@ -133,7 +134,7 @@ func (r *Registry) Update(id string, params UpdateParams) (*Job, error) {
 	}
 
 	if oldStatus != j.Status && j.Status == StatusAssigned {
-		r.appendEvent(j.ID, EventAssigned, oldStatus, j.Status, j.AssignedNodeID, "Job assigned by scheduler")
+		r.appendEvent(j.ID, EventAssigned, oldStatus, j.Status, j.AssignedNodeID, "", "Job assigned by scheduler")
 	}
 
 	jobCopy := *j
@@ -161,17 +162,18 @@ func (r *Registry) Claim(id, nodeID string) (*Job, error) {
 	now := time.Now().UTC()
 	j.Status = StatusRunning
 	j.StartedAt = &now
+	j.ExecutionID = "exec-" + GenerateID()
 
-	r.appendEvent(j.ID, EventClaimed, StatusAssigned, StatusRunning, nodeID, "Job claimed by agent")
+	r.appendEvent(j.ID, EventClaimed, StatusAssigned, StatusRunning, nodeID, j.ExecutionID, "Job claimed by agent")
 
 	jobCopy := *j
 	r.mu.Unlock()
 
-	slog.Info("job claimed", "job_id", id, "node_id", nodeID)
+	slog.Info("job claimed", "job_id", id, "node_id", nodeID, "execution_id", j.ExecutionID)
 	return &jobCopy, nil
 }
 
-func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) {
+func (r *Registry) ReportResult(id, nodeID string, execID string, res JobResult) (*Job, error) {
 	r.mu.Lock()
 
 	j, ok := r.jobs[id]
@@ -182,9 +184,9 @@ func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) 
 
 	// Idempotency: if already succeeded or failed by this node, accept it without modifying again.
 	if j.Status == StatusSucceeded || j.Status == StatusFailed {
-		if j.AssignedNodeID != nodeID {
+		if j.AssignedNodeID != nodeID || j.ExecutionID != execID {
 			r.mu.Unlock()
-			return nil, errors.New("job assigned to another node")
+			return nil, errors.New("stale execution result")
 		}
 		jobCopy := *j
 		r.mu.Unlock()
@@ -195,9 +197,9 @@ func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) 
 		r.mu.Unlock()
 		return nil, ErrInvalidTransition
 	}
-	if j.AssignedNodeID != nodeID {
+	if j.AssignedNodeID != nodeID || j.ExecutionID != execID {
 		r.mu.Unlock()
-		return nil, errors.New("job assigned to another node")
+		return nil, errors.New("stale execution result")
 	}
 
 	now := time.Now().UTC()
@@ -212,15 +214,16 @@ func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) 
 		evtType = EventFailed
 		reason = fmt.Sprintf("Job failed with exit code %d", res.ExitCode)
 	}
+
 	j.CompletedAt = &now
 	j.Result = &res
 
-	r.appendEvent(j.ID, evtType, StatusRunning, j.Status, nodeID, reason)
+	r.appendEvent(j.ID, evtType, StatusRunning, j.Status, nodeID, execID, reason)
 
 	jobCopy := *j
 	r.mu.Unlock()
 
-	slog.Info("job result reported", "job_id", id, "status", j.Status, "exit_code", res.ExitCode)
+	slog.Info("job result reported", "job_id", id, "node_id", nodeID, "execution_id", execID, "status", j.Status, "exit_code", res.ExitCode)
 	return &jobCopy, nil
 }
 
@@ -236,10 +239,12 @@ func (r *Registry) RecoverExecutionTimeouts(timeout time.Duration) int {
 		if j.Status == StatusRunning && j.StartedAt != nil {
 			if now.Sub(*j.StartedAt) >= timeout {
 				oldNodeID := j.AssignedNodeID
+				oldExecutionID := j.ExecutionID
 
 				j.Status = StatusPending
 				j.AssignedNodeID = ""
 				j.StartedAt = nil
+				j.ExecutionID = ""
 
 				r.appendEvent(
 					j.ID,
@@ -247,6 +252,7 @@ func (r *Registry) RecoverExecutionTimeouts(timeout time.Duration) int {
 					StatusRunning,
 					StatusPending,
 					oldNodeID,
+					oldExecutionID,
 					"Execution timeout exceeded",
 				)
 
@@ -273,10 +279,12 @@ func (r *Registry) RecoverNodeJobs(nodeID string, reason string) int {
 	for _, j := range r.jobs {
 		if (j.Status == StatusRunning || j.Status == StatusAssigned) && j.AssignedNodeID == nodeID {
 			oldStatus := j.Status
+			oldExecutionID := j.ExecutionID
 
 			j.Status = StatusPending
 			j.AssignedNodeID = ""
 			j.StartedAt = nil
+			j.ExecutionID = ""
 
 			r.appendEvent(
 				j.ID,
@@ -284,6 +292,7 @@ func (r *Registry) RecoverNodeJobs(nodeID string, reason string) int {
 				oldStatus,
 				StatusPending,
 				nodeID,
+				oldExecutionID,
 				reason,
 			)
 

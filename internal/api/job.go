@@ -36,8 +36,9 @@ type ClaimRequest struct {
 }
 
 type ReportResultRequest struct {
-	NodeID string        `json:"nodeId"`
-	Result job.JobResult `json:"result"`
+	NodeID      string        `json:"nodeId"`
+	ExecutionID string        `json:"executionId"`
+	Result      job.JobResult `json:"result"`
 }
 
 func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -188,13 +189,18 @@ func (h *JobHandler) ReportResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.ExecutionID == "" {
+		http.Error(w, "executionId is required", http.StatusBadRequest)
+		return
+	}
+
 	_, err := h.NodeRegistry.Get(req.NodeID)
 	if err != nil {
 		http.Error(w, "node not found", http.StatusForbidden)
 		return
 	}
+	j, err := h.Registry.ReportResult(id, req.NodeID, req.ExecutionID, req.Result)
 
-	j, err := h.Registry.ReportResult(id, req.NodeID, req.Result)
 	if err != nil {
 		if err == job.ErrJobNotFound {
 			http.Error(w, "Not Found", http.StatusNotFound)

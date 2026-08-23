@@ -51,18 +51,20 @@ All endpoints are hosted by the Control Plane, which defaults to `http://localho
   Manually update job properties. (Used sparingly, largely superseded by internal registry mechanics).
 
 - **`POST /api/v1/jobs/{id}/claim`**
-  Agent endpoint to claim an `ASSIGNED` job atomically. Transitions state to `RUNNING`.
+  Agent endpoint to claim an assigned job. Transitions state from `ASSIGNED` to `RUNNING` and generates a unique `executionId`.
   ```json
   {
     "nodeId": "node-hostname"
   }
   ```
+  Returns the updated Job object containing the generated `executionId`.
 
 - **`POST /api/v1/jobs/{id}/result`**
-  Agent endpoint to report execution completion. Idempotent. Transitions state to `SUCCEEDED` or `FAILED`.
+  Agent endpoint to report execution completion. Idempotent based on `executionId`. Transitions state to `SUCCEEDED` or `FAILED`. Rejects stale executions.
   ```json
   {
     "nodeId": "node-hostname",
+    "executionId": "exec-d4e5f6...",
     "result": {
       "exitCode": 0,
       "stdout": "hello_world\n",

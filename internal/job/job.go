@@ -38,6 +38,7 @@ type Job struct {
 	StartedAt      *time.Time `json:"startedAt,omitempty"`
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 	AssignedNodeID string     `json:"assignedNodeId,omitempty"`
+	ExecutionID    string     `json:"executionId,omitempty"`
 	Result         *JobResult `json:"result,omitempty"`
 }
 
@@ -53,14 +54,15 @@ const (
 )
 
 type JobEvent struct {
-	ID        string       `json:"id"`
-	JobID     string       `json:"jobId"`
-	Timestamp time.Time    `json:"timestamp"`
-	Type      JobEventType `json:"type"`
-	From      Status       `json:"from"`
-	To        Status       `json:"to"`
-	NodeID    string       `json:"nodeId,omitempty"`
-	Reason    string       `json:"reason,omitempty"`
+	ID          string       `json:"id"`
+	JobID       string       `json:"jobId"`
+	Timestamp   time.Time    `json:"timestamp"`
+	Type        JobEventType `json:"type"`
+	From        Status       `json:"from"`
+	To          Status       `json:"to"`
+	NodeID      string       `json:"nodeId,omitempty"`
+	ExecutionID string       `json:"executionId,omitempty"`
+	Reason      string       `json:"reason,omitempty"`
 }
 
 func isValidTransition(current, next Status) bool {

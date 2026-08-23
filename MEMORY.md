@@ -38,6 +38,14 @@ Introduced decoupled node-aware failure recovery and execution timeouts.
 - **NodeGracePeriod (30s):** The buffer applied *after* a node transitions to `OFFLINE` before its assigned jobs are recovered to `PENDING`.
 *Architectural Note on Clearing Fields:* During recovery, the Job's `AssignedNodeID` and `StartedAt` are explicitly cleared. This accurately reflects that the job is no longer assigned or running. The information about the previous failed assignment is not lost; it is preserved immutably inside the `JobEvent` history as the authoritative audit log. Duplicate execution is an accepted risk at this stage as leases have not been introduced.
 
+### Milestone 6C: Execution Ownership & Result Fencing
+Introduced `ExecutionID` to decouple job identity from execution attempts.
+- The Control Plane generates a unique `ExecutionID` (UUID) upon `Claim`.
+- The Agent must pass this `ExecutionID` when reporting results.
+- Any result matching an outdated `ExecutionID` is explicitly rejected as stale.
+- Recovering a job clears its active `ExecutionID`, guaranteeing the next claim generates a fresh identity.
+- V1 does NOT guarantee exactly-once execution, but provides execution-aware result fencing. The old execution attempt is permanently archived in the event history.
+
 ## Current Job Lifecycle
 
 ```text

@@ -32,7 +32,8 @@ func TestIntegration_NodeAwareRecovery(t *testing.T) {
 	}
 
 	// 5. Agent claims it
-	jobReg.Claim(j.ID, n.ID)
+	claimed, _ := jobReg.Claim(j.ID, n.ID)
+	execA := claimed.ExecutionID
 
 	// 6. Kill Agent A / Wait for OFFLINE
 	// Simulate time passing by manually triggering offline via a very small timeout
@@ -68,27 +69,37 @@ func TestIntegration_NodeAwareRecovery(t *testing.T) {
 	events, _ := jobReg.GetEvents(j.ID)
 	hasRecovered := false
 	for _, e := range events {
-		if e.Type == job.EventRecovered && e.NodeID == "agent-a" {
+		if e.Type == job.EventRecovered && e.NodeID == "agent-a" && e.ExecutionID == execA {
 			hasRecovered = true
 		}
 	}
 	if !hasRecovered {
-		t.Fatalf("expected EventRecovered for agent-a")
+		t.Fatalf("expected EventRecovered for agent-a with execution ID")
 	}
 
-	// 11. Restart Agent A
-	nodeReg.Heartbeat("agent-a", nil)
+	// 11. Restart Agent A or bring up Agent B
+	nodeReg.Register(node.Node{ID: "agent-b"})
 
-	// 13. Verify job can be reassigned
+	// 12. Verify job can be reassigned to Agent B
 	sched.SchedulePendingJobs()
 	jReassigned, _ := jobReg.Get(j.ID)
-	if jReassigned.Status != job.StatusAssigned || jReassigned.AssignedNodeID != "agent-a" {
-		t.Fatalf("expected job to be reassigned to agent-a")
+	if jReassigned.Status != job.StatusAssigned || jReassigned.AssignedNodeID != "agent-b" {
+		t.Fatalf("expected job to be reassigned to agent-b")
 	}
 
-	// 14. Verify old execution cannot report result
-	_, err := jobReg.ReportResult(j.ID, "agent-a", job.JobResult{ExitCode: 0})
+	// 13. Agent B claims it
+	claimedB, _ := jobReg.Claim(j.ID, "agent-b")
+	execB := claimedB.ExecutionID
+
+	// 14. Verify Agent A's old execution cannot report result
+	_, err := jobReg.ReportResult(j.ID, "agent-a", execA, job.JobResult{ExitCode: 0})
 	if err == nil {
-		t.Fatalf("expected old execution result to be rejected (wrong state or assignment)")
+		t.Fatalf("expected old execution result from agent-a to be rejected")
+	}
+
+	// 15. Verify Agent B can report its execution
+	_, err = jobReg.ReportResult(j.ID, "agent-b", execB, job.JobResult{ExitCode: 0})
+	if err != nil {
+		t.Fatalf("expected Agent B result to succeed, got %v", err)
 	}
 }
