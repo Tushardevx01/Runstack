@@ -1,8 +1,10 @@
 package job
 
 import (
+	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestJob_GenerateID(t *testing.T) {
@@ -221,4 +223,139 @@ func TestRegistry_EventHistory_Failure(t *testing.T) {
 	if len(events) != 4 || events[3].Type != EventFailed {
 		t.Fatalf("expected FAILED event, got %v", events)
 	}
+}
+
+func TestRegistry_RecoverStaleJobs(t *testing.T) {
+	r := NewRegistry()
+	j1 := r.Create("job1", "echo 1")
+	j2 := r.Create("job2", "echo 2")
+	j3 := r.Create("job3", "echo 3")
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(j1.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+	r.Update(j3.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	r.Claim(j1.ID, nodeID)
+	r.Claim(j2.ID, nodeID)
+	r.Claim(j3.ID, nodeID)
+
+	// Make j1 very stale
+	staleTime := time.Now().UTC().Add(-60 * time.Second)
+	r.mu.Lock()
+	r.jobs[j1.ID].StartedAt = &staleTime
+	r.mu.Unlock()
+
+	// j2 is fresh, StartedAt is now (default from Claim)
+	// j3 will be completed
+	r.ReportResult(j3.ID, nodeID, JobResult{ExitCode: 0, Stdout: "done"})
+
+	recovered := r.RecoverStaleJobs(30 * time.Second)
+	if recovered != 1 {
+		t.Fatalf("expected 1 job recovered, got %d", recovered)
+	}
+
+	// j1 should be PENDING
+	j1After, _ := r.Get(j1.ID)
+	if j1After.Status != StatusPending {
+		t.Fatalf("expected j1 PENDING, got %s", j1After.Status)
+	}
+	if j1After.AssignedNodeID != "" || j1After.StartedAt != nil {
+		t.Fatalf("expected j1 node and startedAt cleared")
+	}
+	events1, _ := r.GetEvents(j1.ID)
+	lastEvent := events1[len(events1)-1]
+	if lastEvent.Type != EventRecovered {
+		t.Fatalf("expected last event RECOVERED, got %s", lastEvent.Type)
+	}
+	if lastEvent.From != StatusRunning || lastEvent.To != StatusPending || lastEvent.NodeID != nodeID {
+		t.Fatalf("invalid RECOVERED event fields: %v", lastEvent)
+	}
+
+	// j2 should still be RUNNING
+	j2After, _ := r.Get(j2.ID)
+	if j2After.Status != StatusRunning {
+		t.Fatalf("expected j2 RUNNING, got %s", j2After.Status)
+	}
+
+	// j3 should still be SUCCEEDED
+	j3After, _ := r.Get(j3.ID)
+	if j3After.Status != StatusSucceeded {
+		t.Fatalf("expected j3 SUCCEEDED, got %s", j3After.Status)
+	}
+
+	// Recover again should yield 0
+	recovered2 := r.RecoverStaleJobs(30 * time.Second)
+	if recovered2 != 0 {
+		t.Fatalf("expected 0 jobs recovered, got %d", recovered2)
+	}
+	events1Again, _ := r.GetEvents(j1.ID)
+	if len(events1Again) != len(events1) {
+		t.Fatalf("duplicate RECOVERED events appended")
+	}
+}
+
+func TestRegistry_RecoverStaleJobs_MissingStartedAt(t *testing.T) {
+	r := NewRegistry()
+	j1 := r.Create("job1", "echo 1")
+
+	r.mu.Lock()
+	r.jobs[j1.ID].Status = StatusRunning
+	r.jobs[j1.ID].StartedAt = nil
+	r.mu.Unlock()
+
+	// Should not panic, should recover 0
+	recovered := r.RecoverStaleJobs(1 * time.Second)
+	if recovered != 0 {
+		t.Fatalf("expected 0 recovered for missing StartedAt, got %d", recovered)
+	}
+}
+
+func TestRegistry_RecoverStaleJobs_WrongState(t *testing.T) {
+	r := NewRegistry()
+	jAssigned := r.Create("jobAssigned", "echo a")
+	jFailed := r.Create("jobFailed", "echo f")
+
+	nodeID := "node-1"
+	statusAssigned := StatusAssigned
+	r.Update(jAssigned.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+	r.Update(jFailed.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+
+	r.Claim(jFailed.ID, nodeID)
+	r.ReportResult(jFailed.ID, nodeID, JobResult{ExitCode: 1, Stdout: ""})
+
+	// Recover should skip them
+	recovered := r.RecoverStaleJobs(0 * time.Second)
+	if recovered != 0 {
+		t.Fatalf("expected 0 recovered for wrong state, got %d", recovered)
+	}
+}
+
+func TestRegistry_RecoverStaleJobs_Concurrency(t *testing.T) {
+	r := NewRegistry()
+	nodeID := "node-1"
+	var wg sync.WaitGroup
+
+	for i := 0; i < 100; i++ {
+		j := r.Create(fmt.Sprintf("job-%d", i), "echo")
+		statusAssigned := StatusAssigned
+		r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+		r.Claim(j.ID, nodeID)
+
+		// Force them to be slightly stale
+		staleTime := time.Now().UTC().Add(-2 * time.Second)
+		r.mu.Lock()
+		r.jobs[j.ID].StartedAt = &staleTime
+		r.mu.Unlock()
+	}
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.RecoverStaleJobs(1 * time.Second)
+		}()
+	}
+	wg.Wait()
 }

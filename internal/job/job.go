@@ -49,6 +49,7 @@ const (
 	EventClaimed   JobEventType = "CLAIMED"
 	EventSucceeded JobEventType = "SUCCEEDED"
 	EventFailed    JobEventType = "FAILED"
+	EventRecovered JobEventType = "RECOVERED"
 )
 
 type JobEvent struct {
@@ -73,7 +74,7 @@ func isValidTransition(current, next Status) bool {
 	case StatusAssigned:
 		return next == StatusRunning || next == StatusFailed || next == StatusPending
 	case StatusRunning:
-		return next == StatusSucceeded || next == StatusFailed
+		return next == StatusSucceeded || next == StatusFailed || next == StatusPending
 	case StatusSucceeded, StatusFailed:
 		return false
 	default:

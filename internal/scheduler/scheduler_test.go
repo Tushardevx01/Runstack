@@ -165,3 +165,68 @@ func TestScheduler_Concurrent(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduler_StaleRecovery(t *testing.T) {
+	nodeReg := node.NewRegistry()
+	jobReg := job.NewRegistry()
+
+	s := New(nodeReg, jobReg)
+	s.StaleThreshold = 100 * time.Millisecond
+
+	nodeReg.Register(node.Node{ID: "node-1"})
+
+	j1 := jobReg.Create("stale-job", "echo stale")
+
+	// Force it to be ASSIGNED, then RUNNING and stale
+	staleTime := time.Now().UTC().Add(-1 * time.Second)
+	statusAssigned := job.StatusAssigned
+	statusRunning := job.StatusRunning
+	nodeID := "node-1"
+
+	jobReg.Update(j1.ID, job.UpdateParams{
+		Status:         &statusAssigned,
+		AssignedNodeID: &nodeID,
+	})
+
+	jobReg.Update(j1.ID, job.UpdateParams{
+		Status:    &statusRunning,
+		StartedAt: &staleTime,
+	})
+
+	// Run scheduler
+	err := s.SchedulePendingJobs()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Because node-1 is ONLINE, the scheduler should recover the job to PENDING
+	// in Step 1, and then in Step 2 it will assign it to node-1!
+	// So the final state should be ASSIGNED.
+
+	jAfter, _ := jobReg.Get(j1.ID)
+	if jAfter.Status != job.StatusAssigned {
+		t.Fatalf("expected job to be RECOVERED then ASSIGNED, got %s", jAfter.Status)
+	}
+
+	events, _ := jobReg.GetEvents(j1.ID)
+	// We expect: CREATED, (manual update -> no event since it wasn't oldStatus!=newStatus==Assigned),
+	// then RECOVERED (by Step 1), then ASSIGNED (by Step 2).
+
+	hasRecovered := false
+	hasAssigned := false
+	for _, e := range events {
+		if e.Type == job.EventRecovered {
+			hasRecovered = true
+		}
+		if e.Type == job.EventAssigned {
+			hasAssigned = true
+		}
+	}
+
+	if !hasRecovered {
+		t.Errorf("expected EventRecovered to be appended")
+	}
+	if !hasAssigned {
+		t.Errorf("expected EventAssigned to be appended")
+	}
+}

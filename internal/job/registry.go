@@ -113,6 +113,9 @@ func (r *Registry) Update(id string, params UpdateParams) (*Job, error) {
 		if !isValidTransition(j.Status, *params.Status) {
 			return nil, ErrInvalidTransition
 		}
+		if j.Status == StatusRunning && *params.Status == StatusPending {
+			return nil, errors.New("cannot manually transition RUNNING to PENDING via Update")
+		}
 		j.Status = *params.Status
 	}
 
@@ -219,4 +222,45 @@ func (r *Registry) ReportResult(id, nodeID string, res JobResult) (*Job, error) 
 
 	slog.Info("job result reported", "job_id", id, "status", j.Status, "exit_code", res.ExitCode)
 	return &jobCopy, nil
+}
+
+// RecoverStaleJobs finds RUNNING jobs that have exceeded the staleThreshold
+// and safely recovers them back to PENDING. Returns the number of jobs recovered.
+func (r *Registry) RecoverStaleJobs(staleThreshold time.Duration) int {
+	r.mu.Lock()
+
+	recoveredCount := 0
+	now := time.Now().UTC()
+
+	for _, j := range r.jobs {
+		if j.Status == StatusRunning && j.StartedAt != nil {
+			if now.Sub(*j.StartedAt) >= staleThreshold {
+				oldNodeID := j.AssignedNodeID
+
+				// Transition back to PENDING
+				j.Status = StatusPending
+				j.AssignedNodeID = ""
+				j.StartedAt = nil
+
+				// Append recovery event
+				r.appendEvent(
+					j.ID,
+					EventRecovered,
+					StatusRunning,
+					StatusPending,
+					oldNodeID,
+					fmt.Sprintf("Job recovered after exceeding stale threshold of %v", staleThreshold),
+				)
+
+				recoveredCount++
+			}
+		}
+	}
+	r.mu.Unlock()
+
+	if recoveredCount > 0 {
+		slog.Info("recovered stale jobs", "count", recoveredCount)
+	}
+
+	return recoveredCount
 }

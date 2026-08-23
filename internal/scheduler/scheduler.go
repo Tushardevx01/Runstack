@@ -6,21 +6,30 @@ import (
 
 	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
+	"time"
 )
 
 type Scheduler struct {
-	nodeRegistry *node.Registry
-	jobRegistry  *job.Registry
+	nodeRegistry   *node.Registry
+	jobRegistry    *job.Registry
+	StaleThreshold time.Duration
 }
 
 func New(nodeRegistry *node.Registry, jobRegistry *job.Registry) *Scheduler {
 	return &Scheduler{
-		nodeRegistry: nodeRegistry,
-		jobRegistry:  jobRegistry,
+		nodeRegistry:   nodeRegistry,
+		jobRegistry:    jobRegistry,
+		StaleThreshold: 30 * time.Second, // default configuration
 	}
 }
 
 func (s *Scheduler) SchedulePendingJobs() error {
+	// Step 1: Detect and recover stale RUNNING jobs back to PENDING.
+	if s.StaleThreshold > 0 {
+		s.jobRegistry.RecoverStaleJobs(s.StaleThreshold)
+	}
+
+	// Step 2: Find eligible ONLINE nodes.
 	nodes := s.nodeRegistry.List()
 
 	var onlineNodes []node.Node
