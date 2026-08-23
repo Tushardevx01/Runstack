@@ -148,3 +148,77 @@ func TestRegistry_ReportResult(t *testing.T) {
 		t.Errorf("expected status FAILED")
 	}
 }
+
+func TestRegistry_EventHistory(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test-events", "echo 1")
+
+	events, err := r.GetEvents(j.ID)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(events) != 1 || events[0].Type != EventCreated {
+		t.Fatalf("expected 1 CREATED event, got %v", events)
+	}
+
+	// 1. Assignment
+	statusAssigned := StatusAssigned
+	nodeID := "node-xyz"
+	_, _ = r.Update(j.ID, UpdateParams{
+		Status:         &statusAssigned,
+		AssignedNodeID: &nodeID,
+	})
+
+	events, _ = r.GetEvents(j.ID)
+	if len(events) != 2 || events[1].Type != EventAssigned {
+		t.Fatalf("expected ASSIGNED event, got %v", events)
+	}
+	if events[1].From != StatusPending || events[1].To != StatusAssigned || events[1].NodeID != nodeID {
+		t.Fatalf("invalid ASSIGNED event contents: %v", events[1])
+	}
+
+	// 2. Claim
+	_, _ = r.Claim(j.ID, nodeID)
+	events, _ = r.GetEvents(j.ID)
+	if len(events) != 3 || events[2].Type != EventClaimed {
+		t.Fatalf("expected CLAIMED event, got %v", events)
+	}
+
+	// 3. Success
+	_, _ = r.ReportResult(j.ID, nodeID, JobResult{ExitCode: 0, Stdout: "done"})
+	events, _ = r.GetEvents(j.ID)
+	if len(events) != 4 || events[3].Type != EventSucceeded {
+		t.Fatalf("expected SUCCEEDED event, got %v", events)
+	}
+
+	// 4. Idempotent result should NOT duplicate event
+	_, _ = r.ReportResult(j.ID, nodeID, JobResult{ExitCode: 0, Stdout: "done"})
+	events, _ = r.GetEvents(j.ID)
+	if len(events) != 4 {
+		t.Fatalf("expected exactly 4 events after idempotent result, got %d", len(events))
+	}
+
+	// 5. Immutability
+	events[0].Type = EventFailed // Mutate caller copy
+	eventsAgain, _ := r.GetEvents(j.ID)
+	if eventsAgain[0].Type == EventFailed {
+		t.Fatalf("registry event history was mutated by caller")
+	}
+}
+
+func TestRegistry_EventHistory_Failure(t *testing.T) {
+	r := NewRegistry()
+	j := r.Create("test-events", "echo 1")
+
+	statusAssigned := StatusAssigned
+	nodeID := "node-1"
+	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
+	r.Claim(j.ID, nodeID)
+
+	r.ReportResult(j.ID, nodeID, JobResult{ExitCode: 1, Stdout: "fail"})
+
+	events, _ := r.GetEvents(j.ID)
+	if len(events) != 4 || events[3].Type != EventFailed {
+		t.Fatalf("expected FAILED event, got %v", events)
+	}
+}

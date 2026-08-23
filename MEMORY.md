@@ -29,6 +29,9 @@ Agent executor. Agents poll for assignments, natively claim jobs, execute them s
 ### Developer Experience Refinement
 Unified binary (`cmd/runstack`), comprehensive `Makefile`, structured `log/slog` logging, and `runstack doctor` CLI diagnostics.
 
+### Milestone 8 (Phase 1)
+In-memory Job Event History. Every legitimate job state transition (Creation, Assignment, Claim, Success, Failure) deterministically produces a chronological event. Events are strictly owned by the Control Plane, keeping the architecture secure. Note: This is *not* persistence yet, and *not* stale-job recovery yet.
+
 ## Current Job Lifecycle
 
 ```text

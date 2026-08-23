@@ -13,17 +13,16 @@
 - [x] Agent Executor (with structured outputs)
 - [x] Result Reporting (with Idempotency)
 - [x] Graceful Agent Shutdown
+- [x] Unified CLI and Developer Experience
+- [x] Structured Logging (log/slog)
 
-## Milestone 6
+## Milestone 8: Reliability & Failure Recovery
 
-### Reliability & Failure Recovery
-- [ ] Job leases
-- [ ] Execution timeout
-- [ ] Stale RUNNING detection (CP-side execution tracking)
+- [x] Job Event History (in-memory)
+- [ ] Stale RUNNING detection (Reconciliation)
 - [ ] Automatic rescheduling for dead nodes
+- [ ] Job leases / execution timeouts
 - [ ] Retry policy specification
-- [ ] Maximum retry count
-- [ ] Failure metadata parsing
 - [ ] Agent crash recovery
 
 ## Future

@@ -41,6 +41,27 @@ type Job struct {
 	Result         *JobResult `json:"result,omitempty"`
 }
 
+type JobEventType string
+
+const (
+	EventCreated   JobEventType = "CREATED"
+	EventAssigned  JobEventType = "ASSIGNED"
+	EventClaimed   JobEventType = "CLAIMED"
+	EventSucceeded JobEventType = "SUCCEEDED"
+	EventFailed    JobEventType = "FAILED"
+)
+
+type JobEvent struct {
+	ID        string       `json:"id"`
+	JobID     string       `json:"jobId"`
+	Timestamp time.Time    `json:"timestamp"`
+	Type      JobEventType `json:"type"`
+	From      Status       `json:"from"`
+	To        Status       `json:"to"`
+	NodeID    string       `json:"nodeId,omitempty"`
+	Reason    string       `json:"reason,omitempty"`
+}
+
 func isValidTransition(current, next Status) bool {
 	if current == next {
 		return true // No-op transition is safely ignored

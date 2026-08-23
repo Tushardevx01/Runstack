@@ -98,6 +98,28 @@ func (h *JobHandler) Get(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(j)
 }
 
+func (h *JobHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	events, err := h.Registry.GetEvents(id)
+	if err == job.ErrJobNotFound {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if events == nil {
+		events = []job.JobEvent{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"events": events,
+	})
+}
+
 func (h *JobHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req UpdateJobRequest

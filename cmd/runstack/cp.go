@@ -94,6 +94,7 @@ func runControlPlane() {
 	mux.HandleFunc("POST /api/v1/jobs", jobHandler.Create)
 	mux.HandleFunc("GET /api/v1/jobs", jobHandler.List)
 	mux.HandleFunc("GET /api/v1/jobs/{id}", jobHandler.Get)
+	mux.HandleFunc("GET /api/v1/jobs/{id}/events", jobHandler.GetEvents)
 	mux.HandleFunc("PATCH /api/v1/jobs/{id}", jobHandler.Update)
 	mux.HandleFunc("POST /api/v1/jobs/{id}/claim", jobHandler.Claim)
 	mux.HandleFunc("POST /api/v1/jobs/{id}/result", jobHandler.ReportResult)

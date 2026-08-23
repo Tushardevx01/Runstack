@@ -279,6 +279,46 @@ func getJob(id string) error {
 	return nil
 }
 
+type JobHistoryResponse struct {
+	Events []job.JobEvent `json:"events"`
+}
+
+func getJobHistory(id string) error {
+	resp, err := http.Get(fmt.Sprintf("http://localhost:8080/api/v1/jobs/%s/events", id))
+	if err != nil {
+		return fmt.Errorf("failed to connect to control plane: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("job not found: %s", id)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("control plane returned status %d", resp.StatusCode)
+	}
+
+	var hist JobHistoryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&hist); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	fmt.Println("RunStack Job History")
+	fmt.Println("--------------------")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w, "TIME\tEVENT\tFROM\tTO\tNODE")
+	for _, e := range hist.Events {
+		nodeStr := e.NodeID
+		if nodeStr == "" {
+			nodeStr = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", e.Timestamp.Format(time.RFC3339), e.Type, e.From, e.To, nodeStr)
+	}
+	w.Flush()
+
+	return nil
+}
+
 func runDoctor() {
 	fmt.Println("RunStack Doctor")
 	fmt.Println("────────────────────────────")
@@ -447,12 +487,19 @@ func runCLI(args []string) {
 		}
 	case "job":
 		if len(args) < 2 {
-			fmt.Println("Usage: runstack job <id>")
+			fmt.Println("Usage: runstack job <id> [--history]")
 			os.Exit(1)
 		}
-		if err := getJob(args[1]); err != nil {
-			printError(err)
-			os.Exit(1)
+		if len(args) == 3 && args[2] == "--history" {
+			if err := getJobHistory(args[1]); err != nil {
+				printError(err)
+				os.Exit(1)
+			}
+		} else {
+			if err := getJob(args[1]); err != nil {
+				printError(err)
+				os.Exit(1)
+			}
 		}
 	default:
 		fmt.Printf("Unknown command: %s\n", command)

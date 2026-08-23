@@ -44,6 +44,9 @@ All endpoints are hosted by the Control Plane, which defaults to `http://localho
 - **`GET /api/v1/jobs/{id}`**
   Retrieves full job details, including timestamps, assignments, and execution results.
 
+- **`GET /api/v1/jobs/{id}/events`**
+  Returns the in-memory chronological event history for a job. Note: Events disappear if the Control Plane restarts.
+
 - **`PATCH /api/v1/jobs/{id}`**
   Manually update job properties. (Used sparingly, largely superseded by internal registry mechanics).
 

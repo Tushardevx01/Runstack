@@ -123,3 +123,40 @@ func TestJobHandler_ReportResult(t *testing.T) {
 		t.Errorf("expected result stdout 'ok'")
 	}
 }
+
+func TestJobHandler_GetEvents(t *testing.T) {
+	nodeReg := node.NewRegistry()
+	jobReg := job.NewRegistry()
+	handler := &JobHandler{Registry: jobReg, NodeRegistry: nodeReg}
+
+	j := jobReg.Create("test-job", "echo 1")
+
+	// Missing job
+	req := httptest.NewRequest("GET", "/api/v1/jobs/fake-id/events", nil)
+	req.SetPathValue("id", "fake-id")
+	rr := httptest.NewRecorder()
+	handler.GetEvents(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rr.Code)
+	}
+
+	// Existing job
+	req = httptest.NewRequest("GET", "/api/v1/jobs/"+j.ID+"/events", nil)
+	req.SetPathValue("id", j.ID)
+	rr = httptest.NewRecorder()
+	handler.GetEvents(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string][]job.JobEvent
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp["events"]) != 1 || resp["events"][0].Type != job.EventCreated {
+		t.Errorf("expected exactly 1 CREATED event")
+	}
+}

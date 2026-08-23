@@ -86,6 +86,8 @@ Valid paths:
 * `ASSIGNED` → `RUNNING` (Agent Claim)
 * `RUNNING` → `SUCCEEDED` / `FAILED` (Agent Result Report)
 
+Every legitimate state transition automatically produces a chronological `JobEvent` owned securely by the Control Plane. Agents cannot arbitrarily inject events.
+
 ### 2. Node Offline Detection
 The Node Registry contains a background loop (`startOfflineDetector`) that checks all nodes every 30 seconds. If a node hasn't sent a heartbeat within the threshold, it is automatically marked `OFFLINE`.
 
