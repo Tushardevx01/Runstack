@@ -53,6 +53,7 @@ func (r *Registry) Create(appID string, spec application.AppSpec) (Deployment, e
 		Version:       version,
 		SpecSnapshot:  copiedSpec,
 		Status:        StatusActive,
+		RolloutStatus: RolloutPending,
 		CreatedAt:     time.Now().UTC(),
 	}
 
@@ -159,3 +160,39 @@ func (r *Registry) ResetCrashCounter(id string) error {
 }
 
 const MaxCrashLoopThreshold = 5
+
+func (r *Registry) UpdateRolloutStatus(id string, status RolloutStatus, desired, updated, ready, unavailable int, reason string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	dep, exists := r.deployments[id]
+	if !exists {
+		return ErrNotFound
+	}
+
+	dep.RolloutStatus = status
+	dep.DesiredReplicas = desired
+	dep.UpdatedReplicas = updated
+	dep.ReadyReplicas = ready
+	dep.UnavailableReplicas = unavailable
+	dep.BlockedReason = reason
+
+	r.deployments[id] = dep.DeepCopy()
+	return nil
+}
+
+func (r *Registry) UpdateRolloutStatusOnly(id string, status RolloutStatus, reason string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	dep, exists := r.deployments[id]
+	if !exists {
+		return ErrNotFound
+	}
+
+	dep.RolloutStatus = status
+	dep.BlockedReason = reason
+
+	r.deployments[id] = dep.DeepCopy()
+	return nil
+}

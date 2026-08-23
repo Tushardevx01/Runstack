@@ -1,6 +1,8 @@
 package service
 
 import (
+	"errors"
+
 	"github.com/Tushardevx01/runstack/internal/application"
 	"github.com/Tushardevx01/runstack/internal/deployment"
 )
@@ -42,6 +44,11 @@ func (s *AppService) UpdateApp(id string, spec application.AppSpec) (application
 		return application.Application{}, err
 	}
 
+	application.EnsureDefaultStrategy(&spec)
+	if err := application.ValidateAppSpec(spec); err != nil {
+		return application.Application{}, err
+	}
+
 	// 1. Create New Deployment
 	dep, err := s.DeploymentRegistry.Create(id, spec)
 	if err != nil {
@@ -68,4 +75,37 @@ func (s *AppService) GetApp(id string) (application.Application, error) {
 
 func (s *AppService) ListApps() []application.Application {
 	return s.AppRegistry.List()
+}
+
+func (s *AppService) RollbackApp(id string, targetDeploymentID string, force bool) (application.Application, error) {
+	app, err := s.AppRegistry.Get(id)
+	if err != nil {
+		return application.Application{}, err
+	}
+
+	dep, err := s.DeploymentRegistry.Get(targetDeploymentID)
+	if err != nil {
+		return application.Application{}, err
+	}
+
+	if !force && (dep.Degraded || dep.RolloutStatus == deployment.RolloutFailed) {
+		return application.Application{}, errors.New("cannot rollback to a DEGRADED or FAILED deployment without force=true")
+	}
+
+	oldDepID := app.ActiveDeploymentID
+
+	app, err = s.AppRegistry.Rollback(id, targetDeploymentID)
+	if err != nil {
+		return application.Application{}, err
+	}
+
+	if oldDepID != "" && oldDepID != targetDeploymentID {
+		s.DeploymentRegistry.UpdateState(oldDepID, deployment.StatusSuperseded)
+	}
+	s.DeploymentRegistry.UpdateState(targetDeploymentID, deployment.StatusActive)
+
+	// Reset rollout state for the target deployment if it was rolled back
+	s.DeploymentRegistry.UpdateRolloutStatusOnly(targetDeploymentID, deployment.RolloutPending, "")
+
+	return app, nil
 }

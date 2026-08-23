@@ -15,15 +15,32 @@ const (
 	StatusRolledBack DeploymentStatus = "ROLLED_BACK"
 )
 
+type RolloutStatus string
+
+const (
+	RolloutPending     RolloutStatus = "PENDING"
+	RolloutProgressing RolloutStatus = "PROGRESSING"
+	RolloutPaused      RolloutStatus = "PAUSED"
+	RolloutFailed      RolloutStatus = "FAILED"
+	RolloutCompleted   RolloutStatus = "COMPLETED"
+	RolloutRolledBack  RolloutStatus = "ROLLED_BACK"
+)
+
 type Deployment struct {
-	ID                 string              `json:"id"`
-	ApplicationID      string              `json:"application_id"`
-	Version            int                 `json:"version"`
-	SpecSnapshot       application.AppSpec `json:"spec_snapshot"`
-	Status             DeploymentStatus    `json:"status"`
-	ConsecutiveCrashes int                 `json:"consecutive_crashes"`
-	Degraded           bool                `json:"degraded"`
-	CreatedAt          time.Time           `json:"created_at"`
+	ID                  string              `json:"id"`
+	ApplicationID       string              `json:"application_id"`
+	Version             int                 `json:"version"`
+	SpecSnapshot        application.AppSpec `json:"spec_snapshot"`
+	Status              DeploymentStatus    `json:"status"` // Overall status (ACTIVE/SUPERSEDED)
+	RolloutStatus       RolloutStatus       `json:"rollout_status"`
+	DesiredReplicas     int                 `json:"desired_replicas"`
+	UpdatedReplicas     int                 `json:"updated_replicas"`
+	ReadyReplicas       int                 `json:"ready_replicas"`
+	UnavailableReplicas int                 `json:"unavailable_replicas"`
+	BlockedReason       string              `json:"blocked_reason,omitempty"`
+	ConsecutiveCrashes  int                 `json:"consecutive_crashes"`
+	Degraded            bool                `json:"degraded"`
+	CreatedAt           time.Time           `json:"created_at"`
 }
 
 // DeepCopy creates a complete copy of the Deployment.

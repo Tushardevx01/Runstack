@@ -40,6 +40,11 @@ func (r *Registry) Create(name string, spec AppSpec) (Application, error) {
 		return Application{}, ErrAlreadyExists
 	}
 
+	EnsureDefaultStrategy(&spec)
+	if err := ValidateAppSpec(spec); err != nil {
+		return Application{}, err
+	}
+
 	app := Application{
 		ID:        generateID(),
 		Name:      name,
@@ -87,9 +92,31 @@ func (r *Registry) Update(id string, spec AppSpec, activeDeploymentID string, st
 		return Application{}, ErrNotFound
 	}
 
+	EnsureDefaultStrategy(&spec)
+	if err := ValidateAppSpec(spec); err != nil {
+		return Application{}, err
+	}
+
 	app.Spec = spec
 	app.ActiveDeploymentID = activeDeploymentID
 	app.Status = status
+	app.UpdatedAt = time.Now().UTC()
+
+	appCopy := app.DeepCopy()
+	r.apps[id] = appCopy
+	return appCopy.DeepCopy(), nil
+}
+
+func (r *Registry) Rollback(id string, activeDeploymentID string) (Application, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	app, exists := r.apps[id]
+	if !exists {
+		return Application{}, ErrNotFound
+	}
+
+	app.ActiveDeploymentID = activeDeploymentID
 	app.UpdatedAt = time.Now().UTC()
 
 	appCopy := app.DeepCopy()

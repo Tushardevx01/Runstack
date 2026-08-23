@@ -124,6 +124,7 @@ func runControlPlane() {
 	mux.HandleFunc("GET /api/v1/apps", appHandler.List)
 	mux.HandleFunc("GET /api/v1/apps/{id}", appHandler.Get)
 	mux.HandleFunc("PUT /api/v1/apps/{id}", appHandler.Update)
+	mux.HandleFunc("POST /api/v1/apps/{id}/rollback", appHandler.Rollback)
 
 	instanceHandler := &api.InstanceHandler{
 		InstanceRegistry:   instRegistry,

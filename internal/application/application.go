@@ -20,6 +20,19 @@ type PortMapping struct {
 	Protocol      string `json:"protocol,omitempty"` // e.g., "tcp", "udp"
 }
 
+type RolloutStrategyType string
+
+const (
+	RolloutStrategyImmediate     RolloutStrategyType = "Immediate"
+	RolloutStrategyRollingUpdate RolloutStrategyType = "RollingUpdate"
+)
+
+type RolloutStrategy struct {
+	Type           RolloutStrategyType `json:"type"`
+	MaxSurge       int                 `json:"max_surge"`
+	MaxUnavailable int                 `json:"max_unavailable"`
+}
+
 type AppSpec struct {
 	Image       string            `json:"image"`
 	Command     []string          `json:"command,omitempty"`
@@ -27,6 +40,7 @@ type AppSpec struct {
 	Environment map[string]string `json:"environment,omitempty"`
 	Ports       []PortMapping     `json:"ports,omitempty"`
 	Replicas    int               `json:"replicas"`
+	Strategy    *RolloutStrategy  `json:"strategy,omitempty"`
 }
 
 type Application struct {
@@ -73,6 +87,11 @@ func (a *Application) DeepCopy() Application {
 		for i, v := range a.Spec.Args {
 			copy.Spec.Args[i] = v
 		}
+	}
+
+	if a.Spec.Strategy != nil {
+		s := *a.Spec.Strategy
+		copy.Spec.Strategy = &s
 	}
 
 	return copy

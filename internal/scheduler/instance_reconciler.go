@@ -56,74 +56,65 @@ func (r *InstanceReconciler) Reconcile() error {
 	// 2. Evaluate Health and Crash Loop resettings
 	r.evaluateHealthAndCrashes()
 
-	apps := r.appReg.List()
+	// 3. Compute Deployment Targets
+	rc := NewRolloutController(r.appReg, r.depReg, r.instReg)
+	targets := rc.ComputeTargets()
 
-	for _, app := range apps {
-		if app.ActiveDeploymentID == "" {
-			continue
-		}
-
-		dep, err := r.depReg.Get(app.ActiveDeploymentID)
-		if err != nil {
-			slog.Error("Reconciler: failed to get active deployment", "app_id", app.ID, "dep_id", app.ActiveDeploymentID, "error", err)
-			continue
-		}
-
-		desiredCount := dep.SpecSnapshot.Replicas
-		allInstances := r.instReg.List()
-
-		for _, inst := range allInstances {
-			if inst.ApplicationID != app.ID {
+	for _, appTarget := range targets {
+		for _, depTarget := range appTarget.Targets {
+			dep, err := r.depReg.Get(depTarget.DeploymentID)
+			if err != nil {
 				continue
 			}
-			if inst.DeploymentID != dep.ID {
-				if r.isViable(inst.Status) {
-					slog.Info("Reconciler: stopping obsolete instance", "instance_id", inst.ID, "deployment_id", inst.DeploymentID)
-					r.instReg.UpdateState(inst.ID, instance.StatusStopped, inst.NodeID, inst.ContainerID)
+
+			var viableInstances []instance.Instance
+			allInstances := r.instReg.List()
+			for _, inst := range allInstances {
+				if inst.ApplicationID == appTarget.AppID && inst.DeploymentID == depTarget.DeploymentID {
+					if r.isViable(inst.Status) {
+						viableInstances = append(viableInstances, inst)
+					}
 				}
 			}
-		}
 
-		var viableInstances []instance.Instance
-		for _, inst := range allInstances {
-			if inst.ApplicationID == app.ID && inst.DeploymentID == dep.ID {
-				if r.isViable(inst.Status) {
-					viableInstances = append(viableInstances, inst)
-				}
-			}
-		}
+			actualCount := len(viableInstances)
+			desiredCount := depTarget.DesiredCount
 
-		actualCount := len(viableInstances)
-
-		// 5. Scale UP
-		if actualCount < desiredCount {
-			toCreate := desiredCount - actualCount
-
-			if dep.Degraded {
-				slog.Warn("Reconciler: skipping replacement for degraded deployment", "app_id", app.ID, "dep_id", dep.ID)
-			} else {
-				slog.Info("Reconciler: scaling up", "app_id", app.ID, "missing", toCreate)
+			// 5. Scale UP
+			if actualCount < desiredCount {
+				toCreate := desiredCount - actualCount
+				slog.Info("Reconciler: scaling up", "app_id", appTarget.AppID, "dep_id", dep.ID, "missing", toCreate)
 				for i := 0; i < toCreate; i++ {
-					_, err := r.instReg.Create(app.ID, dep.ID)
+					_, err := r.instReg.Create(appTarget.AppID, dep.ID)
 					if err != nil {
 						slog.Error("Reconciler: failed to create instance", "error", err)
 					}
 				}
 			}
-		}
 
-		// 6. Scale DOWN
-		if actualCount > desiredCount {
-			toStop := actualCount - desiredCount
-			slog.Info("Reconciler: scaling down", "app_id", app.ID, "excess", toStop)
+			// 6. Scale DOWN
+			if actualCount > desiredCount {
+				toStop := actualCount - desiredCount
+				slog.Info("Reconciler: scaling down", "app_id", appTarget.AppID, "dep_id", dep.ID, "excess", toStop)
 
-			sort.Slice(viableInstances, func(i, j int) bool {
-				return viableInstances[i].ID > viableInstances[j].ID
-			})
+				sort.Slice(viableInstances, func(i, j int) bool {
+					// Prioritize dropping non-ready instances
+					iReady := viableInstances[i].Status == instance.StatusRunning && viableInstances[i].Health == instance.HealthHealthy
+					jReady := viableInstances[j].Status == instance.StatusRunning && viableInstances[j].Health == instance.HealthHealthy
 
-			for i := 0; i < toStop; i++ {
-				inst := viableInstances[i]
-				r.instReg.UpdateState(inst.ID, instance.StatusStopped, inst.NodeID, inst.ContainerID)
+					if iReady != jReady {
+						// True (ready) should be placed at the END of the list so it is NOT stopped (we stop the first `toStop` instances).
+						// Wait, the loop does: for i := 0; i < toStop; i++ { stop(viableInstances[i]) }
+						// So we want non-ready at the BEGINNING.
+						return !iReady // if i is not ready, it comes before j
+					}
+					return viableInstances[i].ID > viableInstances[j].ID
+				})
+
+				for i := 0; i < toStop; i++ {
+					inst := viableInstances[i]
+					r.instReg.UpdateState(inst.ID, instance.StatusStopped, inst.NodeID, inst.ContainerID)
+				}
 			}
 		}
 	}

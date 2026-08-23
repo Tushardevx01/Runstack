@@ -92,3 +92,28 @@ func (h *AppHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(app)
 }
+
+func (h *AppHandler) Rollback(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	target := r.URL.Query().Get("target")
+	if target == "" {
+		http.Error(w, "missing target deployment id", http.StatusBadRequest)
+		return
+	}
+
+	force := r.URL.Query().Get("force") == "true"
+
+	app, err := h.Service.RollbackApp(id, target, force)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(app)
+}
