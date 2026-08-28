@@ -467,6 +467,16 @@ func runCLI(args []string) {
 
 	command := args[0]
 	switch command {
+	case "deploy":
+		if err := runDeploy(args[1:]); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
+	case "logs":
+		if err := runLogs(args[1:]); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
 	case "status":
 		if err := getStatus(); err != nil {
 			printError(err)

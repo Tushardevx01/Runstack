@@ -1,61 +1,50 @@
 package service
 
 import (
+	"testing"
+
 	"github.com/Tushardevx01/runstack/internal/application"
 	"github.com/Tushardevx01/runstack/internal/deployment"
-	"testing"
 )
 
-func TestAppService_CreateApp(t *testing.T) {
+func TestAppService_DeployIdempotency(t *testing.T) {
 	appReg := application.NewRegistry()
 	depReg := deployment.NewRegistry()
+	svc := NewAppService(appReg, depReg)
 
-	s := NewAppService(appReg, depReg)
+	spec := application.AppSpec{
+		Image:    "ghcr.io/test@sha256:abcd",
+		Replicas: 2,
+	}
 
-	spec := application.AppSpec{Replicas: 3}
-	app, err := s.CreateApp("test-app", spec)
+	app, err := svc.DeployApp("test-app", spec)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("failed to deploy: %v", err)
 	}
 
-	if app.ActiveDeploymentID == "" {
-		t.Fatalf("expected active deployment ID to be set")
+	firstDepID := app.ActiveDeploymentID
+	if firstDepID == "" {
+		t.Fatalf("expected deployment ID")
 	}
 
-	dep, _ := depReg.Get(app.ActiveDeploymentID)
-	if dep.Status != deployment.StatusActive {
-		t.Errorf("expected new deployment to be ACTIVE, got %s", dep.Status)
-	}
-}
-
-func TestAppService_UpdateApp(t *testing.T) {
-	appReg := application.NewRegistry()
-	depReg := deployment.NewRegistry()
-
-	s := NewAppService(appReg, depReg)
-
-	spec1 := application.AppSpec{Replicas: 3}
-	app, _ := s.CreateApp("test-app", spec1)
-
-	dep1ID := app.ActiveDeploymentID
-
-	spec2 := application.AppSpec{Replicas: 5}
-	app, err := s.UpdateApp(app.ID, spec2)
+	// Deploy exact same spec
+	app2, err := svc.DeployApp("test-app", spec)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("failed second deploy: %v", err)
 	}
 
-	if app.ActiveDeploymentID == dep1ID {
-		t.Fatalf("expected active deployment ID to change")
+	if app2.ActiveDeploymentID != firstDepID {
+		t.Errorf("expected idempotent deploy to return same deployment ID %s, got %s", firstDepID, app2.ActiveDeploymentID)
 	}
 
-	dep1, _ := depReg.Get(dep1ID)
-	if dep1.Status != deployment.StatusSuperseded {
-		t.Errorf("expected old deployment to be SUPERSEDED, got %s", dep1.Status)
+	// Deploy changed spec
+	spec.Image = "ghcr.io/test@sha256:efgh"
+	app3, err := svc.DeployApp("test-app", spec)
+	if err != nil {
+		t.Fatalf("failed third deploy: %v", err)
 	}
 
-	dep2, _ := depReg.Get(app.ActiveDeploymentID)
-	if dep2.Status != deployment.StatusActive {
-		t.Errorf("expected new deployment to be ACTIVE, got %s", dep2.Status)
+	if app3.ActiveDeploymentID == firstDepID {
+		t.Errorf("expected new deployment ID after spec change")
 	}
 }

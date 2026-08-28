@@ -165,5 +165,7 @@ func runAgent() {
 	instanceExec.Start()
 	defer instanceExec.Stop()
 
+	startAgentAPI(cr, 8081)
+
 	startJobPolling(ctx, nodeID)
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -185,6 +186,26 @@ type inspectInfo struct {
 	State       runtime.ContainerState
 	InstanceID  string
 	ExecutionID string
+}
+
+func (d *DockerRuntime) Logs(ctx context.Context, containerID string) (io.ReadCloser, error) {
+	info, err := d.inspect(ctx, containerID)
+	if err != nil {
+		return nil, err
+	}
+	if info.InstanceID == "" {
+		return nil, fmt.Errorf("container is not managed by RunStack")
+	}
+
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "100", containerID)
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("docker logs failed: %w (stderr: %s)", err, stderr.String())
+	}
+	return io.NopCloser(bytes.NewReader(out.Bytes())), nil
 }
 
 func (d *DockerRuntime) inspect(ctx context.Context, idOrName string) (inspectInfo, error) {

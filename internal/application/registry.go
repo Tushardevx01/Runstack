@@ -123,3 +123,17 @@ func (r *Registry) Rollback(id string, activeDeploymentID string) (Application, 
 	r.apps[id] = appCopy
 	return appCopy.DeepCopy(), nil
 }
+
+func (r *Registry) GetByName(name string) (Application, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	id, exists := r.names[name]
+	if !exists {
+		return Application{}, ErrNotFound
+	}
+	app, exists := r.apps[id]
+	if !exists {
+		return Application{}, ErrNotFound
+	}
+	return app.DeepCopy(), nil
+}

@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"io"
 )
 
 var (
@@ -48,4 +49,5 @@ type ContainerRuntime interface {
 	Stop(ctx context.Context, containerID string) error
 	Status(ctx context.Context, containerID string) (ContainerState, error)
 	Remove(ctx context.Context, containerID string) error
+	Logs(ctx context.Context, containerID string) (io.ReadCloser, error)
 }

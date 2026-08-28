@@ -86,6 +86,12 @@ func runControlPlane() {
 	}()
 
 	appService := service.NewAppService(appRegistry, depRegistry)
+	logsHandler := &api.LogsHandler{
+		AppRegistry:      appRegistry,
+		InstanceRegistry: instRegistry,
+		NodeRegistry:     registry,
+	}
+
 	appHandler := &api.AppHandler{
 		Service: appService,
 	}
@@ -146,7 +152,9 @@ func runControlPlane() {
 	mux.HandleFunc("POST /api/v1/apps", appHandler.Create)
 	mux.HandleFunc("GET /api/v1/apps", appHandler.List)
 	mux.HandleFunc("GET /api/v1/apps/{id}", appHandler.Get)
+	mux.HandleFunc("GET /api/v1/apps/{id}/logs", logsHandler.GetAppLogs)
 	mux.HandleFunc("PUT /api/v1/apps/{id}", appHandler.Update)
+	mux.HandleFunc("POST /api/v1/apps/{id}/deploy", appHandler.Deploy)
 	mux.HandleFunc("POST /api/v1/apps/{id}/rollback", appHandler.Rollback)
 
 	mux.HandleFunc("POST /api/v1/services", routeHandler.Create)

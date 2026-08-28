@@ -1,8 +1,10 @@
 package fake
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/Tushardevx01/runstack/internal/runtime"
@@ -104,4 +106,8 @@ func (f *FakeRuntime) Remove(ctx context.Context, containerID string) error {
 
 	delete(f.Containers, containerID)
 	return nil
+}
+
+func (f *FakeRuntime) Logs(ctx context.Context, containerID string) (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader([]byte("fake logs"))), nil
 }
