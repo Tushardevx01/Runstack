@@ -13,10 +13,10 @@ All endpoints are hosted by the Control Plane, which defaults to `http://localho
 ## Nodes
 
 - **`POST /api/v1/nodes/register`**
-  Registers a new agent node with its system capabilities (OS, CPU, Memory, Containers).
+  Registers a new agent node with its system capabilities.
 
 - **`POST /api/v1/nodes/{id}/heartbeat`**
-  Agents periodically ping this to prevent being marked `OFFLINE`. Can include updated capability metrics.
+  Agents periodically ping this to prevent being marked `OFFLINE`.
 
 - **`GET /api/v1/nodes`**
   Returns a list of all registered nodes and their statuses.
@@ -28,62 +28,75 @@ All endpoints are hosted by the Control Plane, which defaults to `http://localho
 
 - **`POST /api/v1/jobs`**
   Creates a new job. Begins in the `PENDING` state.
-  ```json
-  {
-    "name": "my-job",
-    "command": "echo hello_world"
-  }
-  ```
 
 - **`GET /api/v1/jobs`**
   Lists all jobs. 
-  Supports query parameters for agents polling for work:
-  - `?assignedNodeId={node_id}`
-  - `?status={assigned}`
 
 - **`GET /api/v1/jobs/{id}`**
-  Retrieves full job details, including timestamps, assignments, and execution results.
+  Retrieves full job details.
 
 - **`GET /api/v1/jobs/{id}/events`**
-  Returns the in-memory chronological event history for a job. Note: Events disappear if the Control Plane restarts.
-
-- **`PATCH /api/v1/jobs/{id}`**
-  Manually update job properties. (Used sparingly, largely superseded by internal registry mechanics).
+  Returns chronological event history for a job.
 
 - **`POST /api/v1/jobs/{id}/claim`**
-  Agent endpoint to claim an assigned job. Transitions state from `ASSIGNED` to `RUNNING` and generates a unique `executionId`.
-  ```json
-  {
-    "nodeId": "node-hostname"
-  }
-  ```
-  Returns the updated Job object containing the generated `executionId`.
+  Agent endpoint to claim an assigned job.
 
 - **`POST /api/v1/jobs/{id}/result`**
-  Agent endpoint to report execution completion. Idempotent based on `executionId`. Transitions state to `SUCCEEDED` or `FAILED`. Rejects stale executions.
-  ```json
-  {
-    "nodeId": "node-hostname",
-    "executionId": "exec-d4e5f6...",
-    "result": {
-      "exitCode": 0,
-      "stdout": "hello_world\n",
-      "stderr": "",
-      "error": ""
-    }
-  }
-  ```
+  Agent endpoint to report execution completion.
 
-### Instances
+## Applications & Deployments
 
-* `GET /api/v1/instances` - List instances (supports `node_id` and `status` query params)
-* `POST /api/v1/instances/{id}/claim` - Agent claim an assigned instance. Returns `ExecutionID` and `AppSpec`.
-* `POST /api/v1/instances/{id}/status` - Agent pushes runtime state (e.g., `RUNNING`, `CRASHED`) and health (`HEALTHY`, `UNHEALTHY`). Requires `ExecutionID`.
+- **`POST /api/v1/apps`**
+  Creates a new Application.
 
-### Service Routing
+- **`POST /api/v1/apps/{id}/deploy`**
+  Builds, pushes, and updates an Application's active deployment via immutable image digests.
 
-*   `POST /api/v1/services`: Create a new routing service mapping a domain/path to an application target port.
-*   `GET /api/v1/services`: List all routing services.
-*   `GET /api/v1/services/{id}`: Get service details by ID.
-*   `PUT /api/v1/services/{id}`: Update an existing routing service.
-*   `DELETE /api/v1/services/{id}`: Delete a routing service, immediately removing traffic routing.
+- **`POST /api/v1/apps/{id}/rollback`**
+  Reverts the active deployment to the previous state.
+
+- **`GET /api/v1/apps/{id}/logs`**
+  Proxies bounded logs from the active instances securely.
+
+## Instances
+
+- **`GET /api/v1/instances`**
+  List instances (supports `node_id` and `status` query params).
+
+- **`POST /api/v1/instances/{id}/claim`**
+  Agent claim an assigned instance.
+
+- **`POST /api/v1/instances/{id}/status`**
+  Agent pushes runtime state and health.
+
+## Service & Routing (Milestone 8G)
+
+- **`POST /api/v1/domains`**
+  Register a new custom domain owned by a specific Application.
+
+- **`GET /api/v1/domains`**
+  List registered custom domains (supports `application_id` query param).
+
+- **`DELETE /api/v1/domains/{id}`**
+  Delete a custom domain.
+
+- **`POST /api/v1/services`**
+  Create a new internal routing service mapping an Application to a target port.
+
+- **`GET /api/v1/services`**
+  List all routing services.
+
+- **`PUT /api/v1/services/{id}`**
+  Update an existing routing service's target port.
+
+- **`DELETE /api/v1/services/{id}`**
+  Delete a routing service.
+
+- **`POST /api/v1/ingresses`**
+  Create an Ingress mapping a Domain to a Service (enforces Application ownership).
+
+- **`GET /api/v1/ingresses`**
+  List registered Ingress mappings.
+
+- **`DELETE /api/v1/ingresses/{id}`**
+  Delete an Ingress mapping.

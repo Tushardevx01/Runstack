@@ -9,12 +9,13 @@ type Endpoint struct {
 	Port int
 }
 
-// ProxyProvider abstracts the underlying routing implementation.
-type ProxyProvider interface {
-	// UpdateRoute sets the desired healthy endpoints for a given Service.
-	// It is strictly idempotent.
-	UpdateRoute(ctx context.Context, srv Service, endpoints []Endpoint) error
+type RouteRule struct {
+	Host      string
+	Path      string
+	Endpoints []Endpoint
+}
 
-	// RemoveRoute fully clears a Service from the routing table.
-	RemoveRoute(ctx context.Context, serviceID string) error
+type ProxyProvider interface {
+	// UpdateRoutes replaces the entire routing table atomically.
+	UpdateRoutes(ctx context.Context, rules []RouteRule) error
 }

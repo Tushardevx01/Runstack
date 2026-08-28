@@ -13,90 +13,103 @@ type RouteHandler struct {
 	AppRegistry     *application.Registry
 }
 
-type CreateServiceRequest struct {
-	ApplicationID string         `json:"application_id"`
-	Domain        string         `json:"domain"`
-	PathPrefix    string         `json:"path_prefix"`
-	TargetPort    int            `json:"target_port"`
-	Protocol      route.Protocol `json:"protocol"`
-}
-
 func (h *RouteHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req CreateServiceRequest
+	var req struct {
+		ApplicationID string         `json:"application_id"`
+		TargetPort    int            `json:"target_port"`
+		Protocol      route.Protocol `json:"protocol"`
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if req.ApplicationID == "" || req.TargetPort <= 0 {
-		http.Error(w, "missing required fields", http.StatusBadRequest)
-		return
+	_, err := h.AppRegistry.Get(req.ApplicationID)
+	if err != nil {
+		app, err := h.AppRegistry.GetByName(req.ApplicationID)
+		if err != nil {
+			http.Error(w, "application not found", http.StatusNotFound)
+			return
+		}
+		req.ApplicationID = app.ID
 	}
 
-	// Validate Application ownership
-	if _, err := h.AppRegistry.Get(req.ApplicationID); err != nil {
-		http.Error(w, "application not found", http.StatusBadRequest)
-		return
+	if req.Protocol == "" {
+		req.Protocol = route.ProtocolHTTP
 	}
 
-	srv, err := h.ServiceRegistry.Create(req.ApplicationID, req.Domain, req.PathPrefix, req.TargetPort, req.Protocol)
+	srv, err := h.ServiceRegistry.Create(req.ApplicationID, req.TargetPort, req.Protocol)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(srv)
 }
 
 func (h *RouteHandler) List(w http.ResponseWriter, r *http.Request) {
+	appID := r.URL.Query().Get("application_id")
+
 	services := h.ServiceRegistry.List()
+
+	var filtered []route.Service
+	for _, srv := range services {
+		if appID != "" && srv.ApplicationID != appID {
+			continue
+		}
+		filtered = append(filtered, srv)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(services)
+	json.NewEncoder(w).Encode(filtered)
 }
 
 func (h *RouteHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+
 	srv, err := h.ServiceRegistry.Get(id)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(srv)
+}
+
+func (h *RouteHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	var req struct {
+		TargetPort int            `json:"target_port"`
+		Protocol   route.Protocol `json:"protocol"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	srv, err := h.ServiceRegistry.Update(id, req.TargetPort, req.Protocol)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(srv)
 }
 
 func (h *RouteHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	err := h.ServiceRegistry.Delete(id)
-	if err != nil {
+
+	if err := h.ServiceRegistry.Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
-}
-
-type UpdateServiceRequest struct {
-	Domain     string         `json:"domain"`
-	PathPrefix string         `json:"path_prefix"`
-	TargetPort int            `json:"target_port"`
-	Protocol   route.Protocol `json:"protocol"`
-}
-
-func (h *RouteHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var req UpdateServiceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	srv, err := h.ServiceRegistry.Update(id, req.Domain, req.PathPrefix, req.TargetPort, req.Protocol)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(srv)
 }

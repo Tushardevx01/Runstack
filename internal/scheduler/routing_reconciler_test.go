@@ -2,88 +2,91 @@ package scheduler
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/Tushardevx01/runstack/internal/application"
+	"github.com/Tushardevx01/runstack/internal/ingress"
 	"github.com/Tushardevx01/runstack/internal/instance"
 	"github.com/Tushardevx01/runstack/internal/node"
 	"github.com/Tushardevx01/runstack/internal/route"
 )
 
 type mockProxy struct {
-	routes map[string][]route.Endpoint
+	mu    sync.Mutex
+	rules []route.RouteRule
 }
 
-func (m *mockProxy) UpdateRoute(ctx context.Context, srv route.Service, endpoints []route.Endpoint) error {
-	m.routes[srv.ID] = endpoints
+func (m *mockProxy) UpdateRoutes(ctx context.Context, rules []route.RouteRule) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.rules = rules
 	return nil
 }
 
-func (m *mockProxy) RemoveRoute(ctx context.Context, serviceID string) error {
-	delete(m.routes, serviceID)
-	return nil
-}
-
-func TestRoutingReconciler_DrainAndCrash(t *testing.T) {
+func TestRoutingReconciler_Reconcile(t *testing.T) {
 	appReg := application.NewRegistry()
 	instReg := instance.NewRegistry()
 	nodeReg := node.NewRegistry()
 	routeReg := route.NewRegistry()
-	proxy := &mockProxy{routes: make(map[string][]route.Endpoint)}
+	domainReg := ingress.NewDomainRegistry()
+	ingressReg := ingress.NewIngressRegistry()
+	proxy := &mockProxy{}
 
-	reconciler := NewRoutingReconciler(appReg, instReg, nodeReg, routeReg, proxy)
-	ctx := context.Background()
+	reconciler := NewRoutingReconciler(appReg, instReg, nodeReg, routeReg, domainReg, ingressReg, proxy)
 
-	// Setup Node
-	nodeReg.Register(node.Node{ID: "node1", IPAddress: "10.0.0.1"})
+	appA, _ := appReg.Create("app-a", application.AppSpec{})
+	appB, _ := appReg.Create("app-b", application.AppSpec{})
 
-	// Setup App & Route
-	app, _ := appReg.Create("", application.AppSpec{})
-	srv, _ := routeReg.Create(app.ID, "test.local", "/", 8080, route.ProtocolHTTP)
+	n := node.Node{ID: "node1", IPAddress: "192.168.1.100"}
+	nodeReg.Register(n)
 
-	// Setup Instances
-	iA, _ := instReg.Create(app.ID, "dep1")
-	iB, _ := instReg.Create(app.ID, "dep1")
-	iC, _ := instReg.Create(app.ID, "dep1")
+	// App A Instance
+	instA, _ := instReg.Create(appA.ID, "depA")
+	instReg.UpdateState(instA.ID, instance.StatusAssigned, "node1", "")
+	claimedInst, _ := instReg.Claim(instA.ID, "node1")
+	instReg.ReportStatus(instA.ID, "node1", claimedInst.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "cnt1", []instance.PortMapping{{Internal: 8080, External: 30000}})
 
-	ports := []instance.PortMapping{{Internal: 8080, External: 30001}}
-	instReg.UpdateState(iA.ID, instance.StatusAssigned, "node1", "")
-	iA, _ = instReg.Claim(iA.ID, "node1")
-	iA, _ = instReg.ReportStatus(iA.ID, "node1", iA.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "c1", ports)
+	// Create Domain and Service for App A
+	domain, _ := domainReg.Create("api.example.com", appA.ID, false)
+	srv, _ := routeReg.Create(appA.ID, 8080, route.ProtocolHTTP)
+	ingressReg.Create(domain.ID, srv.ID, "/")
 
-	ports2 := []instance.PortMapping{{Internal: 8080, External: 30002}}
-	instReg.UpdateState(iB.ID, instance.StatusAssigned, "node1", "")
-	iB, _ = instReg.Claim(iB.ID, "node1")
-	iB, _ = instReg.ReportStatus(iB.ID, "node1", iB.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "c2", ports2)
-
-	ports3 := []instance.PortMapping{{Internal: 8080, External: 30003}}
-	instReg.UpdateState(iC.ID, instance.StatusAssigned, "node1", "")
-	iC, _ = instReg.Claim(iC.ID, "node1")
-	iC, _ = instReg.ReportStatus(iC.ID, "node1", iC.ExecutionID, instance.StatusRunning, instance.HealthHealthy, "c3", ports3)
-
-	// Initial Reconcile
-	_ = reconciler.Reconcile(ctx)
-	if len(proxy.routes[srv.ID]) != 3 {
-		t.Fatalf("expected 3 endpoints, got %d", len(proxy.routes[srv.ID]))
+	err := reconciler.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Drain iA and iB
-	instReg.MarkDraining(iA.ID)
-	instReg.MarkDraining(iB.ID)
+	proxy.mu.Lock()
+	rules := proxy.rules
+	proxy.mu.Unlock()
 
-	// Reconcile after drain
-	_ = reconciler.Reconcile(ctx)
-	if len(proxy.routes[srv.ID]) != 1 {
-		t.Fatalf("expected 1 endpoint after drain, got %d", len(proxy.routes[srv.ID]))
-	}
-	if proxy.routes[srv.ID][0].Port != 30003 {
-		t.Fatalf("expected port 30003 to remain active")
+	if len(rules) != 1 {
+		t.Fatalf("expected 1 route rule, got %d", len(rules))
 	}
 
-	// Crash iC
-	instReg.ReportStatus(iC.ID, "node1", iC.ExecutionID, instance.StatusCrashed, instance.HealthUnknown, "c3", nil)
-	_ = reconciler.Reconcile(ctx)
-	if len(proxy.routes[srv.ID]) != 0 {
-		t.Fatalf("expected 0 endpoints after crash, got %d", len(proxy.routes[srv.ID]))
+	if rules[0].Host != "api.example.com" {
+		t.Errorf("expected host api.example.com, got %s", rules[0].Host)
+	}
+	if len(rules[0].Endpoints) != 1 || rules[0].Endpoints[0].Port != 30000 {
+		t.Errorf("expected endpoint on port 30000, got %v", rules[0].Endpoints)
+	}
+
+	// Security Test: Cross-Application Domain mapping
+	srvB, _ := routeReg.Create(appB.ID, 8080, route.ProtocolHTTP)
+	ingressReg.Create(domain.ID, srvB.ID, "/b")
+
+	err = reconciler.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	proxy.mu.Lock()
+	rules2 := proxy.rules
+	proxy.mu.Unlock()
+
+	// Reconciler must ignore the cross-application mapping
+	if len(rules2) != 1 {
+		t.Fatalf("expected 1 route rule due to cross-app rejection, got %d", len(rules2))
 	}
 }

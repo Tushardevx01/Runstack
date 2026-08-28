@@ -8,53 +8,60 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type RouteEntry struct {
-	Service   Service
-	Endpoints []Endpoint
-	Counter   *uint64
+	Rule    RouteRule
+	Counter *uint64
 }
 
 type HTTPProxy struct {
-	mu     sync.RWMutex
-	routes map[string]*RouteEntry // ServiceID -> RouteEntry
+	routes atomic.Pointer[[]*RouteEntry]
 	port   int
 	server *http.Server
 }
 
 func NewHTTPProxy(port int) *HTTPProxy {
-	return &HTTPProxy{
-		routes: make(map[string]*RouteEntry),
-		port:   port,
+	p := &HTTPProxy{
+		port: port,
 	}
+	empty := make([]*RouteEntry, 0)
+	p.routes.Store(&empty)
+	return p
 }
 
-func (p *HTTPProxy) UpdateRoute(ctx context.Context, srv Service, endpoints []Endpoint) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+func (p *HTTPProxy) UpdateRoutes(ctx context.Context, rules []RouteRule) error {
+	newRoutes := make([]*RouteEntry, len(rules))
 
-	entry, exists := p.routes[srv.ID]
-	if !exists {
-		var c uint64
-		entry = &RouteEntry{Counter: &c}
-		p.routes[srv.ID] = entry
+	// Preserve counters if possible for load balancing
+	oldRoutesPtr := p.routes.Load()
+	var oldRoutes []*RouteEntry
+	if oldRoutesPtr != nil {
+		oldRoutes = *oldRoutesPtr
 	}
-	entry.Service = srv
-	entry.Endpoints = endpoints
 
-	slog.Info("Proxy updated", "service", srv.ID, "domain", srv.Domain, "endpoints", len(endpoints))
-	return nil
-}
+	for i, rule := range rules {
+		var counter *uint64
+		for _, old := range oldRoutes {
+			if old.Rule.Host == rule.Host && old.Rule.Path == rule.Path {
+				counter = old.Counter
+				break
+			}
+		}
+		if counter == nil {
+			var c uint64
+			counter = &c
+		}
+		newRoutes[i] = &RouteEntry{
+			Rule:    rule,
+			Counter: counter,
+		}
+	}
 
-func (p *HTTPProxy) RemoveRoute(ctx context.Context, serviceID string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	delete(p.routes, serviceID)
+	p.routes.Store(&newRoutes)
+	slog.Info("Proxy routing table updated", "routes", len(newRoutes))
 	return nil
 }
 
@@ -82,33 +89,42 @@ func (p *HTTPProxy) Start(ctx context.Context) error {
 }
 
 func (p *HTTPProxy) handleRequest(w http.ResponseWriter, r *http.Request) {
-	p.mu.RLock()
+	routesPtr := p.routes.Load()
+	if routesPtr == nil {
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	routes := *routesPtr
+
+	reqHost := r.Host
+	if idx := strings.Index(reqHost, ":"); idx != -1 {
+		reqHost = reqHost[:idx]
+	}
+	reqHost = strings.TrimSuffix(strings.ToLower(reqHost), ".")
+
 	var matched *RouteEntry
-	for _, entry := range p.routes {
-		if entry.Service.Domain != "" && entry.Service.Domain != r.Host {
+	for _, entry := range routes {
+		if entry.Rule.Host != "" && entry.Rule.Host != reqHost {
 			continue
 		}
-		if entry.Service.PathPrefix != "" && !strings.HasPrefix(r.URL.Path, entry.Service.PathPrefix) {
+		if entry.Rule.Path != "" && !strings.HasPrefix(r.URL.Path, entry.Rule.Path) {
 			continue
 		}
 		matched = entry
 		break
 	}
 
-	if matched == nil || len(matched.Endpoints) == 0 {
-		p.mu.RUnlock()
+	if matched == nil {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	if len(matched.Rule.Endpoints) == 0 {
 		http.Error(w, "Service Unavailable: No healthy endpoints", http.StatusServiceUnavailable)
 		return
 	}
 
-	// Copy endpoints to avoid holding lock during proxying
-	endpoints := make([]Endpoint, len(matched.Endpoints))
-	copy(endpoints, matched.Endpoints)
-	counter := matched.Counter
-	p.mu.RUnlock()
-
-	idx := atomic.AddUint64(counter, 1) % uint64(len(endpoints))
-	target := endpoints[idx]
+	idx := atomic.AddUint64(matched.Counter, 1) % uint64(len(matched.Rule.Endpoints))
+	target := matched.Rule.Endpoints[idx]
 
 	targetURL, _ := url.Parse(fmt.Sprintf("http://%s:%d", target.IP, target.Port))
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)

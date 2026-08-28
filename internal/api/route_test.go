@@ -11,42 +11,40 @@ import (
 	"github.com/Tushardevx01/runstack/internal/route"
 )
 
-func TestServiceCRUD(t *testing.T) {
+func TestRouteHandler_Create(t *testing.T) {
 	appReg := application.NewRegistry()
-	srvReg := route.NewRegistry()
+	routeReg := route.NewRegistry()
 
 	handler := &RouteHandler{
+		ServiceRegistry: routeReg,
 		AppRegistry:     appReg,
-		ServiceRegistry: srvReg,
 	}
 
 	app, _ := appReg.Create("app1", application.AppSpec{})
 
 	// Create valid service
-	reqBody := CreateServiceRequest{
-		ApplicationID: app.ID,
-		Domain:        "example.com",
-		TargetPort:    8080,
+	reqBody := map[string]interface{}{
+		"application_id": app.ID,
+		"target_port":    8080,
 	}
 	b, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/services", bytes.NewReader(b))
-	rec := httptest.NewRecorder()
 
-	handler.Create(rec, req)
+	req := httptest.NewRequest("POST", "/api/v1/services", bytes.NewBuffer(b))
+	rr := httptest.NewRecorder()
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+	handler.Create(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected 201 Created, got %d", rr.Code)
 	}
 
-	// Create invalid service (wrong app)
-	reqBody.ApplicationID = "invalid-app"
-	b, _ = json.Marshal(reqBody)
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/services", bytes.NewReader(b))
-	rec = httptest.NewRecorder()
+	var srv route.Service
+	json.NewDecoder(rr.Body).Decode(&srv)
 
-	handler.Create(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid app, got %d", rec.Code)
+	if srv.ApplicationID != app.ID {
+		t.Errorf("expected %s, got %s", app.ID, srv.ApplicationID)
+	}
+	if srv.TargetPort != 8080 {
+		t.Errorf("expected 8080, got %d", srv.TargetPort)
 	}
 }

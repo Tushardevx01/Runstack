@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("service not found")
+	ErrServiceNotFound = errors.New("service not found")
 )
 
 type Registry struct {
@@ -29,15 +29,13 @@ func generateID() string {
 	return hex.EncodeToString(b)
 }
 
-func (r *Registry) Create(appID, domain, pathPrefix string, targetPort int, protocol Protocol) (Service, error) {
+func (r *Registry) Create(appID string, targetPort int, protocol Protocol) (Service, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	srv := Service{
 		ID:            generateID(),
 		ApplicationID: appID,
-		Domain:        domain,
-		PathPrefix:    pathPrefix,
 		TargetPort:    targetPort,
 		Protocol:      protocol,
 		CreatedAt:     time.Now().UTC(),
@@ -53,7 +51,7 @@ func (r *Registry) Get(id string) (Service, error) {
 
 	srv, exists := r.services[id]
 	if !exists {
-		return Service{}, ErrNotFound
+		return Service{}, ErrServiceNotFound
 	}
 	return srv, nil
 }
@@ -62,11 +60,27 @@ func (r *Registry) List() []Service {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var result []Service
+	list := make([]Service, 0, len(r.services))
 	for _, srv := range r.services {
-		result = append(result, srv)
+		list = append(list, srv)
 	}
-	return result
+	return list
+}
+
+func (r *Registry) Update(id string, targetPort int, protocol Protocol) (Service, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	srv, exists := r.services[id]
+	if !exists {
+		return Service{}, ErrServiceNotFound
+	}
+
+	srv.TargetPort = targetPort
+	srv.Protocol = protocol
+
+	r.services[id] = srv
+	return srv, nil
 }
 
 func (r *Registry) Delete(id string) error {
@@ -74,27 +88,9 @@ func (r *Registry) Delete(id string) error {
 	defer r.mu.Unlock()
 
 	if _, exists := r.services[id]; !exists {
-		return ErrNotFound
+		return ErrServiceNotFound
 	}
 
 	delete(r.services, id)
 	return nil
-}
-
-func (r *Registry) Update(id string, domain, pathPrefix string, targetPort int, protocol Protocol) (Service, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	srv, exists := r.services[id]
-	if !exists {
-		return Service{}, ErrNotFound
-	}
-
-	srv.Domain = domain
-	srv.PathPrefix = pathPrefix
-	srv.TargetPort = targetPort
-	srv.Protocol = protocol
-
-	r.services[id] = srv
-	return srv, nil
 }

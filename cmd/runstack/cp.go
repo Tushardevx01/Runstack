@@ -11,6 +11,7 @@ import (
 	"github.com/Tushardevx01/runstack/internal/api"
 	"github.com/Tushardevx01/runstack/internal/application"
 	"github.com/Tushardevx01/runstack/internal/deployment"
+	"github.com/Tushardevx01/runstack/internal/ingress"
 	"github.com/Tushardevx01/runstack/internal/instance"
 	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
@@ -77,6 +78,8 @@ func runControlPlane() {
 	depRegistry := deployment.NewRegistry()
 	instRegistry := instance.NewRegistry()
 	routeRegistry := route.NewRegistry()
+	domainRegistry := ingress.NewDomainRegistry()
+	ingressRegistry := ingress.NewIngressRegistry()
 
 	httpProxy := route.NewHTTPProxy(80) // Default proxy port
 	go func() {
@@ -103,7 +106,7 @@ func runControlPlane() {
 	sched := scheduler.New(registry, jobRegistry)
 	instSched := scheduler.NewInstanceScheduler(registry, instRegistry)
 	instReconciler := scheduler.NewInstanceReconciler(appRegistry, depRegistry, instRegistry, registry)
-	routingReconciler := scheduler.NewRoutingReconciler(appRegistry, instRegistry, registry, routeRegistry, httpProxy)
+	routingReconciler := scheduler.NewRoutingReconciler(appRegistry, instRegistry, registry, routeRegistry, domainRegistry, ingressRegistry, httpProxy)
 
 	// Start background scheduler loops
 	go func() {
@@ -157,11 +160,29 @@ func runControlPlane() {
 	mux.HandleFunc("POST /api/v1/apps/{id}/deploy", appHandler.Deploy)
 	mux.HandleFunc("POST /api/v1/apps/{id}/rollback", appHandler.Rollback)
 
+	domainHandler := &api.DomainHandler{
+		DomainRegistry: domainRegistry,
+		AppRegistry:    appRegistry,
+	}
+	ingressHandler := &api.IngressHandler{
+		IngressRegistry: ingressRegistry,
+		DomainRegistry:  domainRegistry,
+		ServiceRegistry: routeRegistry,
+	}
+
 	mux.HandleFunc("POST /api/v1/services", routeHandler.Create)
 	mux.HandleFunc("GET /api/v1/services", routeHandler.List)
 	mux.HandleFunc("GET /api/v1/services/{id}", routeHandler.Get)
 	mux.HandleFunc("PUT /api/v1/services/{id}", routeHandler.Update)
 	mux.HandleFunc("DELETE /api/v1/services/{id}", routeHandler.Delete)
+
+	mux.HandleFunc("POST /api/v1/domains", domainHandler.Create)
+	mux.HandleFunc("GET /api/v1/domains", domainHandler.List)
+	mux.HandleFunc("DELETE /api/v1/domains/{id}", domainHandler.Delete)
+
+	mux.HandleFunc("POST /api/v1/ingresses", ingressHandler.Create)
+	mux.HandleFunc("GET /api/v1/ingresses", ingressHandler.List)
+	mux.HandleFunc("DELETE /api/v1/ingresses/{id}", ingressHandler.Delete)
 
 	instanceHandler := &api.InstanceHandler{
 		InstanceRegistry:   instRegistry,
