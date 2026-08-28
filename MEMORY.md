@@ -136,3 +136,14 @@ Explicitly separates Status (runtime), Health (application), Node State (infrast
 - Node drop to offline sets `UNKNOWN` with `UnknownSince`, allowing `InstanceUnknownTimeout` before marking `CRASHED` (avoiding false alarms).
 - Deployment tracks `ConsecutiveCrashes` with a circuit breaker mechanism (`MaxCrashLoopThreshold`).
 - Reconciler gracefully scales instances up/down and handles stale replacements, halting replacements when a deployment is `DEGRADED`.
+
+## Step 8D: Deployment Rollout Management
+Introduced zero-capacity-loss rollouts via `RolloutController`. Rollouts deterministically derive target instance counts from observed capacity, respecting `MaxSurge` and `MaxUnavailable` without data races or oscillating targets. Rollback is implemented by changing `ActiveDeploymentID` back to an immutable v1 deployment, allowing natural reconciliation.
+
+## Step 8E: Service Routing / Traffic Management
+Introduced `Service` domain, local `PortAllocator`, and `RoutingReconciler` to gracefully route traffic to `RUNNING + HEALTHY` instances via `HTTPProxy`. Traffic gracefully drains using `DrainTimeout`.
+
+## Step 8E-Hardening: Integration & Safety Pass
+- Wired `RoutingReconciler` and `HTTPProxy` into `cp.go` with graceful shutdown.
+- Added `Service` CRUD HTTP API with strict Application identity constraints.
+- Fixed an edge case where `ASSIGNED/STARTING` instances on dead nodes were trapped in `UNKNOWN` by ensuring the Agent's `pollAndClaim` also picks up unclaimed `UNKNOWN` instances upon node recovery.

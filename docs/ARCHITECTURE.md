@@ -129,3 +129,6 @@ RunStack strictly separates Status (lifecycle), Health (readiness), Node state, 
 - **Node Loss (UNKNOWN):** Node offline translates to `UNKNOWN` with an `UnknownSince` timestamp. Only after `InstanceUnknownTimeout` does it become `CRASHED` and replaceable, preventing network partitions from acting like application crashes.
 - **Crash-Loop Breaker:** The `Deployment` tracks `ConsecutiveCrashes`. If the threshold (`MaxCrashLoopThreshold`) is reached, the Deployment becomes `DEGRADED` and the Reconciler pauses replacement to protect infrastructure.
 - **Idempotency:** Repeated Reconciler ticks converge to the same desired state safely.
+
+### Traffic Routing
+Service requests are mapped to `ApplicationID`. A background `RoutingReconciler` continuously updates an embedded `HTTPProxy` with `RUNNING + HEALTHY` endpoints. A strict `Draining` state gracefully removes endpoints from the proxy while allowing active connections to finish before termination.

@@ -119,7 +119,10 @@ func (r *Registry) Claim(id string, nodeID string) (Instance, error) {
 		return Instance{}, ErrNotFound
 	}
 
-	if inst.Status != StatusAssigned {
+	if inst.Status != StatusAssigned && inst.Status != StatusUnknown {
+		return Instance{}, ErrInvalidStateTransition
+	}
+	if inst.Status == StatusUnknown && inst.ExecutionID != "" {
 		return Instance{}, ErrInvalidStateTransition
 	}
 	if inst.NodeID != nodeID {
@@ -128,6 +131,7 @@ func (r *Registry) Claim(id string, nodeID string) (Instance, error) {
 
 	inst.Status = StatusStarting
 	inst.ExecutionID = generateID()
+	inst.UnknownSince = nil
 
 	r.instances[id] = inst.DeepCopy()
 	return inst.DeepCopy(), nil

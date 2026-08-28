@@ -80,3 +80,21 @@ func (r *Registry) Delete(id string) error {
 	delete(r.services, id)
 	return nil
 }
+
+func (r *Registry) Update(id string, domain, pathPrefix string, targetPort int, protocol Protocol) (Service, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	srv, exists := r.services[id]
+	if !exists {
+		return Service{}, ErrNotFound
+	}
+
+	srv.Domain = domain
+	srv.PathPrefix = pathPrefix
+	srv.TargetPort = targetPort
+	srv.Protocol = protocol
+
+	r.services[id] = srv
+	return srv, nil
+}

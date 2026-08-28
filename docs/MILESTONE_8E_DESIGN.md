@@ -78,3 +78,9 @@ There are no incremental state patches (`add endpoint X`, `remove endpoint Y`) p
 The 8D Rollout Controller dictates capacity counts, and the Instance Reconciler creates/stops instances.
 - **During a Rollout:** Both `v1` and `v2` deployments will concurrently have instances that meet the Health/Eligibility rules. The Routing Reconciler will natively route to a blend of both (Zero-Downtime Traffic Migration).
 - **During a Rollback:** The `ActiveDeploymentID` flips back to `v1`. The Rollout Controller scales `v1` back up. As `v1` instances become healthy, they re-enter the Service routing table. Simultaneously, `v2` instances are placed into the `DRAINING` state, removed from traffic, and eventually terminated. 
+
+## Hardening Addendum
+During the 8E-Hardening phase, the following integration fixes were implemented:
+1. `RoutingReconciler` and `HTTPProxy` were officially instantiated and wired into the Control Plane loop with graceful shutdown.
+2. The Service API (`/api/v1/services`) was exposed.
+3. The offline node behavior was refined to prevent orphaned instances: `ASSIGNED` and `STARTING` instances on an offline node gracefully transition to `UNKNOWN` and can be claimed if the node recovers, or timeout to `CRASHED` and are replaced.

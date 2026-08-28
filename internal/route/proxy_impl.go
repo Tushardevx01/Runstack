@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type RouteEntry struct {
@@ -57,7 +58,7 @@ func (p *HTTPProxy) RemoveRoute(ctx context.Context, serviceID string) error {
 	return nil
 }
 
-func (p *HTTPProxy) Start() error {
+func (p *HTTPProxy) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", p.handleRequest)
 
@@ -66,8 +67,18 @@ func (p *HTTPProxy) Start() error {
 		Handler: mux,
 	}
 
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		p.server.Shutdown(shutdownCtx)
+	}()
+
 	slog.Info("HTTP Proxy started", "port", p.port)
-	return p.server.ListenAndServe()
+	if err := p.server.ListenAndServe(); err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }
 
 func (p *HTTPProxy) handleRequest(w http.ResponseWriter, r *http.Request) {

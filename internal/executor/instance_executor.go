@@ -60,12 +60,15 @@ func (e *InstanceExecutor) loop() {
 }
 
 func (e *InstanceExecutor) pollAndClaim() {
-	instances, err := e.APIClient.ListInstances(e.NodeID, string(instance.StatusAssigned))
+	instances, err := e.APIClient.ListInstances(e.NodeID, "")
 	if err != nil {
 		return
 	}
 
 	for _, inst := range instances {
+		if inst.Status != instance.StatusAssigned && (inst.Status != instance.StatusUnknown || inst.ExecutionID != "") {
+			continue
+		}
 		claimResp, err := e.APIClient.ClaimInstance(inst.ID, e.NodeID)
 		if err != nil {
 			continue
@@ -138,7 +141,7 @@ func (e *InstanceExecutor) monitorActive() {
 
 		state, err := e.Runtime.Status(e.ctx, containerName)
 
-		if inst.Status == instance.StatusStopped || inst.Status == instance.StatusUnknown {
+		if inst.Status == instance.StatusStopped {
 			if err == nil {
 				// Zombie container!
 				_ = e.Runtime.Stop(e.ctx, containerName)
@@ -157,7 +160,7 @@ func (e *InstanceExecutor) monitorActive() {
 			continue
 		}
 
-		if inst.Status != instance.StatusStarting && inst.Status != instance.StatusRunning && inst.Status != instance.StatusStopping {
+		if inst.Status != instance.StatusStarting && inst.Status != instance.StatusRunning && inst.Status != instance.StatusStopping && inst.Status != instance.StatusUnknown {
 			continue
 		}
 

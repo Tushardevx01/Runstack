@@ -79,3 +79,11 @@ All endpoints are hosted by the Control Plane, which defaults to `http://localho
 * `GET /api/v1/instances` - List instances (supports `node_id` and `status` query params)
 * `POST /api/v1/instances/{id}/claim` - Agent claim an assigned instance. Returns `ExecutionID` and `AppSpec`.
 * `POST /api/v1/instances/{id}/status` - Agent pushes runtime state (e.g., `RUNNING`, `CRASHED`) and health (`HEALTHY`, `UNHEALTHY`). Requires `ExecutionID`.
+
+### Service Routing
+
+*   `POST /api/v1/services`: Create a new routing service mapping a domain/path to an application target port.
+*   `GET /api/v1/services`: List all routing services.
+*   `GET /api/v1/services/{id}`: Get service details by ID.
+*   `PUT /api/v1/services/{id}`: Update an existing routing service.
+*   `DELETE /api/v1/services/{id}`: Delete a routing service, immediately removing traffic routing.
