@@ -132,3 +132,10 @@ RunStack strictly separates Status (lifecycle), Health (readiness), Node state, 
 
 ### Traffic Routing
 Service requests are mapped to `ApplicationID`. A background `RoutingReconciler` continuously updates an embedded `HTTPProxy` with `RUNNING + HEALTHY` endpoints. A strict `Draining` state gracefully removes endpoints from the proxy while allowing active connections to finish before termination.
+
+### Custom Domains and Ingress
+RunStack uses Host-based routing. Domains are Application-scoped. Ingress mappings link Domains to Services, which are then passed to the embedded proxy using an atomic lock-free `[]RouteRule` swap for zero-downtime reconfiguration. Cross-application routing is strictly rejected by the Control Plane.
+
+### Secrets Management
+Secrets are fully decoupled from immutable Deployments and reside in an Application-scoped `SecretRegistry`. 
+Deployments store **references** (e.g., `secret:db-password`). The Control Plane resolves these references just-in-time when providing the runtime environment payload to the Agent during an Instance Claim. This isolates plaintext solely to process memory and completely avoids writing secrets into JSON responses, deployment histories, or system logs.

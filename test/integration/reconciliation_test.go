@@ -18,7 +18,7 @@ func TestEndToEndReconciliation(t *testing.T) {
 	instReg := instance.NewRegistry()
 	nodeReg := node.NewRegistry()
 
-	appService := service.NewAppService(appReg, depReg)
+	appService := service.NewAppService(appReg, depReg, application.NewSecretRegistry())
 	reconciler := scheduler.NewInstanceReconciler(appReg, depReg, instReg, nodeReg)
 	instScheduler := scheduler.NewInstanceScheduler(nodeReg, instReg)
 

@@ -10,7 +10,7 @@ import (
 func TestAppService_DeployIdempotency(t *testing.T) {
 	appReg := application.NewRegistry()
 	depReg := deployment.NewRegistry()
-	svc := NewAppService(appReg, depReg)
+	svc := NewAppService(appReg, depReg, application.NewSecretRegistry())
 
 	spec := application.AppSpec{
 		Image:    "ghcr.io/test@sha256:abcd",

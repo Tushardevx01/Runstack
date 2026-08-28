@@ -100,3 +100,15 @@ All endpoints are hosted by the Control Plane, which defaults to `http://localho
 
 - **`DELETE /api/v1/ingresses/{id}`**
   Delete an Ingress mapping.
+
+## Secrets (Milestone 8H - Upcoming)
+
+- **`POST /api/v1/secrets`**
+  Create a new secret (metadata returned, plaintext value safely consumed but not returned).
+
+- **`GET /api/v1/secrets`**
+  List application secrets (metadata only, no values).
+
+- **`DELETE /api/v1/secrets/{id}`**
+  Delete a secret.
+

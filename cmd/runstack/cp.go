@@ -80,6 +80,7 @@ func runControlPlane() {
 	routeRegistry := route.NewRegistry()
 	domainRegistry := ingress.NewDomainRegistry()
 	ingressRegistry := ingress.NewIngressRegistry()
+	secretRegistry := application.NewSecretRegistry()
 
 	httpProxy := route.NewHTTPProxy(80) // Default proxy port
 	go func() {
@@ -88,7 +89,7 @@ func runControlPlane() {
 		}
 	}()
 
-	appService := service.NewAppService(appRegistry, depRegistry)
+	appService := service.NewAppService(appRegistry, depRegistry, secretRegistry)
 	logsHandler := &api.LogsHandler{
 		AppRegistry:      appRegistry,
 		InstanceRegistry: instRegistry,
@@ -160,6 +161,14 @@ func runControlPlane() {
 	mux.HandleFunc("POST /api/v1/apps/{id}/deploy", appHandler.Deploy)
 	mux.HandleFunc("POST /api/v1/apps/{id}/rollback", appHandler.Rollback)
 
+	secretHandler := &api.SecretHandler{
+		Registry: secretRegistry,
+		AppReg:   appRegistry,
+	}
+	mux.HandleFunc("POST /api/v1/secrets", secretHandler.Set)
+	mux.HandleFunc("GET /api/v1/secrets", secretHandler.List)
+	mux.HandleFunc("DELETE /api/v1/secrets/{id}", secretHandler.Delete)
+
 	domainHandler := &api.DomainHandler{
 		DomainRegistry: domainRegistry,
 		AppRegistry:    appRegistry,
@@ -187,6 +196,7 @@ func runControlPlane() {
 	instanceHandler := &api.InstanceHandler{
 		InstanceRegistry:   instRegistry,
 		DeploymentRegistry: depRegistry,
+		SecretRegistry:     secretRegistry,
 	}
 	mux.HandleFunc("GET /api/v1/instances", instanceHandler.List)
 	mux.HandleFunc("POST /api/v1/instances/{id}/claim", instanceHandler.Claim)

@@ -147,3 +147,10 @@ Introduced `Service` domain, local `PortAllocator`, and `RoutingReconciler` to g
 - Wired `RoutingReconciler` and `HTTPProxy` into `cp.go` with graceful shutdown.
 - Added `Service` CRUD HTTP API with strict Application identity constraints.
 - Fixed an edge case where `ASSIGNED/STARTING` instances on dead nodes were trapped in `UNKNOWN` by ensuring the Agent's `pollAndClaim` also picks up unclaimed `UNKNOWN` instances upon node recovery.
+
+## Step 8H: Secrets Management
+- Implemented application-scoped `SecretRegistry` storing values exclusively in-memory.
+- Added `secret:<name>` JIT resolution during Instance Claim to protect Deployment immutability.
+- Added secret rotation idempotency: `DeployApp` forces a new Deployment if `Secret.UpdatedAt > Deployment.CreatedAt`.
+- A missing secret causes `InstanceHandler.Claim` to immediately transition the Instance to `CRASHED`.
+- Plaintext boundaries strictly enforced: `GET /secrets` returns metadata only. `Claim` failures return 500 without logging the value. Docker receives secrets directly into `Env` map.

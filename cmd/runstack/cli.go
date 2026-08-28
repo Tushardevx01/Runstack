@@ -463,6 +463,7 @@ func runCLI(args []string) {
 		fmt.Println("  job create <command> [--max-retries <n>] Create a new job")
 		fmt.Println("  job <id>  Show details of a specific job")
 		fmt.Println("  domain    Manage custom domains")
+		fmt.Println("  secret    Manage application secrets (set, ls, rm)")
 		os.Exit(1)
 	}
 
@@ -480,6 +481,11 @@ func runCLI(args []string) {
 		}
 	case "domain":
 		if err := runDomain(args[1:]); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
+	case "secret":
+		if err := runSecret(args[1:]); err != nil {
 			fmt.Println("Error:", err)
 			os.Exit(1)
 		}

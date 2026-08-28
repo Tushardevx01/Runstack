@@ -2,7 +2,7 @@ package service
 
 import (
 	"errors"
-	"fmt"
+	"strings"
 
 	"github.com/Tushardevx01/runstack/internal/application"
 	"github.com/Tushardevx01/runstack/internal/deployment"
@@ -11,12 +11,14 @@ import (
 type AppService struct {
 	AppRegistry        *application.Registry
 	DeploymentRegistry *deployment.Registry
+	SecretRegistry     *application.SecretRegistry
 }
 
-func NewAppService(appReg *application.Registry, depReg *deployment.Registry) *AppService {
+func NewAppService(appReg *application.Registry, depReg *deployment.Registry, secReg *application.SecretRegistry) *AppService {
 	return &AppService{
 		AppRegistry:        appReg,
 		DeploymentRegistry: depReg,
+		SecretRegistry:     secReg,
 	}
 }
 
@@ -139,8 +141,7 @@ func (s *AppService) DeployApp(id string, spec application.AppSpec) (application
 	if app.ActiveDeploymentID != "" {
 		activeDep, err := s.DeploymentRegistry.Get(app.ActiveDeploymentID)
 		if err == nil {
-			fmt.Printf("A: %#v\nB: %#v\n", activeDep.SpecSnapshot, spec)
-			if specsMatch(activeDep.SpecSnapshot, spec) {
+			if s.specsMatch(id, activeDep, spec) {
 				return app, nil
 			}
 		}
@@ -163,7 +164,8 @@ func (s *AppService) DeployApp(id string, spec application.AppSpec) (application
 	return app, err
 }
 
-func specsMatch(a, b application.AppSpec) bool {
+func (s *AppService) specsMatch(appID string, activeDep deployment.Deployment, b application.AppSpec) bool {
+	a := activeDep.SpecSnapshot
 	if a.Image != b.Image || len(a.Command) != len(b.Command) || len(a.Args) != len(b.Args) || len(a.Environment) != len(b.Environment) || len(a.Ports) != len(b.Ports) || a.Replicas != b.Replicas {
 		return false
 	}
@@ -177,21 +179,30 @@ func specsMatch(a, b application.AppSpec) bool {
 			return false
 		}
 	}
-	for k, v := range a.Environment {
-		if b.Environment[k] != v {
-			return false
-		}
-	}
 	for i := range a.Ports {
 		if a.Ports[i] != b.Ports[i] {
 			return false
 		}
 	}
-	if a.Strategy != nil && b.Strategy != nil {
-		if a.Strategy.Type != b.Strategy.Type || a.Strategy.MaxSurge != b.Strategy.MaxSurge || a.Strategy.MaxUnavailable != b.Strategy.MaxUnavailable {
+	for k, v := range a.Environment {
+		if b.Environment[k] != v {
 			return false
 		}
-	} else if a.Strategy != b.Strategy {
+		// If it's a secret, check if the secret was updated after this deployment was created
+		if strings.HasPrefix(v, "secret:") {
+			secretName := strings.TrimPrefix(v, "secret:")
+			secMetadata, err := s.SecretRegistry.GetByName(appID, secretName)
+			if err == nil { // if not found, we don't force a new deployment, let it fail on claim
+				if secMetadata.UpdatedAt.After(activeDep.CreatedAt) {
+					return false // Secret was updated, require new deployment
+				}
+			}
+		}
+	}
+	if (a.Strategy == nil) != (b.Strategy == nil) {
+		return false
+	}
+	if a.Strategy != nil && *a.Strategy != *b.Strategy {
 		return false
 	}
 	return true

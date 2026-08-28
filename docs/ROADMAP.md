@@ -55,3 +55,10 @@
 - [ ] Load-aware scheduling (CPU/Memory tracking)
 - [ ] Capability-aware scheduling (e.g. requiring Docker)
 - [ ] Resource-aware scheduling limits
+
+### Milestone 8H: Secrets Management (COMPLETED)
+- Application-scoped secrets via `/api/v1/secrets`.
+- `runstack secret set/ls/rm` CLI.
+- Just-in-Time reference materialization during Agent claim.
+- Idempotent deploy behavior accounting for secret rotation.
+- Missing secrets result in deterministic `CRASHED` state.

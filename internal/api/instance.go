@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/Tushardevx01/runstack/internal/application"
 	"github.com/Tushardevx01/runstack/internal/deployment"
@@ -12,6 +13,7 @@ import (
 type InstanceHandler struct {
 	InstanceRegistry   *instance.Registry
 	DeploymentRegistry *deployment.Registry
+	SecretRegistry     *application.SecretRegistry
 }
 
 type ClaimInstanceRequest struct {
@@ -61,10 +63,31 @@ func (h *InstanceHandler) Claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// JIT Secret Resolution
+	resolvedSpec := dep.SpecSnapshot
+	if len(resolvedSpec.Environment) > 0 {
+		resolvedEnv := make(map[string]string, len(resolvedSpec.Environment))
+		for k, v := range resolvedSpec.Environment {
+			if strings.HasPrefix(v, "secret:") {
+				secretName := strings.TrimPrefix(v, "secret:")
+				val, err := h.SecretRegistry.Resolve(dep.ApplicationID, secretName)
+				if err != nil {
+					h.InstanceRegistry.UpdateState(inst.ID, instance.StatusCrashed, inst.NodeID, "")
+					http.Error(w, "failed to resolve secret: "+secretName, http.StatusInternalServerError)
+					return
+				}
+				resolvedEnv[k] = val
+			} else {
+				resolvedEnv[k] = v
+			}
+		}
+		resolvedSpec.Environment = resolvedEnv
+	}
+
 	resp := ClaimInstanceResponse{
 		Instance:    inst,
 		ExecutionID: inst.ExecutionID,
-		Spec:        dep.SpecSnapshot,
+		Spec:        resolvedSpec,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

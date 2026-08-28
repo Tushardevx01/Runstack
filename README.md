@@ -13,9 +13,11 @@ Control Plane
     ├── Application Registry
     ├── Deployment Registry
     ├── Instance Registry
+    ├── Secret Registry
     ├── Job Scheduler
     ├── Instance Scheduler
     ├── Instance Reconciler
+    ├── Routing Reconciler
     └── HTTP API
 
 Agents
@@ -30,10 +32,12 @@ Agents
 
 - **Node Discovery**: Agents automatically report OS, CPU, RAM, and container runtimes (Docker/Podman). The Control Plane aggressively detects offline agents via heartbeat timeouts.
 - **Job Execution**: A deterministic scheduler pushes one-off `PENDING` work to available `ONLINE` nodes. Agents pull assigned jobs, claim them securely, execute them safely via `os/exec`, and report standard output/errors back.
-- **Application Deployment (PaaS)**: Manage desired application state (e.g., number of replicas, image configuration).
+- **Application Deployment (PaaS)**: Manage desired application state (e.g., number of replicas, image configuration). Features immutable deployments and automatic rollouts.
 - **Instance Reconciliation**: The Control Plane automatically reconciles desired deployments with actual runtime instances, scheduling new instances or tearing down excess ones.
 - **Container Lifecycle**: Agents natively interface with container runtimes (Docker/Podman) to run isolated application instances.
 - **Failure Recovery**: Node-aware failure recovery, stale execution fencing, and robust retry policies ensure workloads recover from agent crashes or timeouts.
+- **Service Routing & Ingress**: Zero-downtime service routing and custom domain ingress support.
+- **Secrets Management**: Application-scoped, in-memory secret registry with safe runtime resolution during instance claims to prevent plaintext leaks.
 
 ## Domain Models
 
@@ -104,10 +108,11 @@ curl -X POST http://localhost:8080/api/v1/apps \
 ```
 
 ## Current Limitations (V1)
-- **In-Memory State**: If the Control Plane restarts, historical data is lost.
+- **In-Memory State**: Registries live entirely in memory. If the Control Plane restarts, historical data is lost.
 - **Command Parsing**: Agents run job commands via `strings.Fields`. Complex shell quotes (`echo "hello world"`) are not yet parsed natively to avoid arbitrary `/bin/sh` shell injection.
 - **Single Job Concurrency**: An Agent executes exactly one job at a time.
-- **Application Routing**: Routing and load-balancing across instances are not yet implemented.
+- **No Distributed Scheduler**: No resource-aware or distributed load balancing.
+- **No Health Probes**: Containers are assumed healthy immediately upon starting.
 
 ## Project Structure & Documentation
 
