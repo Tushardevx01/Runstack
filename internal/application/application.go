@@ -33,14 +33,27 @@ type RolloutStrategy struct {
 	MaxUnavailable int                 `json:"max_unavailable"`
 }
 
+type Probe struct {
+	Type             string `json:"type"` // "HTTP" or "TCP"
+	Path             string `json:"path,omitempty"`
+	Port             int    `json:"port"`
+	InitialDelaySecs int    `json:"initial_delay_secs,omitempty"`
+	PeriodSecs       int    `json:"period_secs,omitempty"`
+	TimeoutSecs      int    `json:"timeout_secs,omitempty"`
+	SuccessThreshold int    `json:"success_threshold,omitempty"`
+	FailureThreshold int    `json:"failure_threshold,omitempty"`
+}
+
 type AppSpec struct {
-	Image       string            `json:"image"`
-	Command     []string          `json:"command,omitempty"`
-	Args        []string          `json:"args,omitempty"`
-	Environment map[string]string `json:"environment,omitempty"`
-	Ports       []PortMapping     `json:"ports,omitempty"`
-	Replicas    int               `json:"replicas"`
-	Strategy    *RolloutStrategy  `json:"strategy,omitempty"`
+	Image          string            `json:"image"`
+	Command        []string          `json:"command,omitempty"`
+	Args           []string          `json:"args,omitempty"`
+	Environment    map[string]string `json:"environment,omitempty"`
+	Ports          []PortMapping     `json:"ports,omitempty"`
+	Replicas       int               `json:"replicas"`
+	Strategy       *RolloutStrategy  `json:"strategy,omitempty"`
+	ReadinessProbe *Probe            `json:"readiness_probe,omitempty"`
+	LivenessProbe  *Probe            `json:"liveness_probe,omitempty"`
 }
 
 type Application struct {

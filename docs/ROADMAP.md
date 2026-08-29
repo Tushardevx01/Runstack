@@ -62,3 +62,9 @@
 - Just-in-Time reference materialization during Agent claim.
 - Idempotent deploy behavior accounting for secret rotation.
 - Missing secrets result in deterministic `CRASHED` state.
+
+### Milestone 8I: Application Health Probes & Readiness (DESIGN PHASE)
+- Explicit Readiness and Liveness probe models.
+- Support HTTP/TCP probes via local host-port loopback.
+- Gated routing and rollouts based on Readiness.
+- Liveness failures increment existing crash-loop breaker.

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/Tushardevx01/runstack/internal/api"
+	"github.com/Tushardevx01/runstack/internal/application"
 	"github.com/Tushardevx01/runstack/internal/instance"
 	"github.com/Tushardevx01/runstack/internal/node"
 	"github.com/Tushardevx01/runstack/internal/runtime"
@@ -14,23 +16,30 @@ import (
 
 // InstanceExecutor manages long-running Instances on the Agent.
 type InstanceExecutor struct {
-	NodeID    string
-	APIClient *api.Client
-	Runtime   runtime.ContainerRuntime
-	Ports     *node.PortAllocator
-	ctx       context.Context
-	cancel    context.CancelFunc
+	NodeID      string
+	APIClient   *api.Client
+	Runtime     runtime.ContainerRuntime
+	Ports       *node.PortAllocator
+	ctx         context.Context
+	cancel      context.CancelFunc
+	proberMu    sync.Mutex
+	probers     map[string]context.CancelFunc
+	activeSpecs map[string]application.AppSpec
+	activePorts map[string]int
 }
 
 func NewInstanceExecutor(nodeID string, apiClient *api.Client, cr runtime.ContainerRuntime) *InstanceExecutor {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &InstanceExecutor{
-		NodeID:    nodeID,
-		APIClient: apiClient,
-		Runtime:   cr,
-		Ports:     node.NewPortAllocator(30000, 32767),
-		ctx:       ctx,
-		cancel:    cancel,
+		NodeID:      nodeID,
+		APIClient:   apiClient,
+		Runtime:     cr,
+		Ports:       node.NewPortAllocator(30000, 32767),
+		ctx:         ctx,
+		cancel:      cancel,
+		probers:     make(map[string]context.CancelFunc),
+		activeSpecs: make(map[string]application.AppSpec),
+		activePorts: make(map[string]int),
 	}
 }
 
@@ -103,6 +112,7 @@ func (e *InstanceExecutor) pollAndClaim() {
 		if err != nil {
 			_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, instance.StatusCrashed, instance.HealthUnknown, "", nil)
 			e.Ports.Release(inst.ID)
+			e.stopProbers(inst.ID)
 			continue
 		}
 
@@ -112,14 +122,30 @@ func (e *InstanceExecutor) pollAndClaim() {
 		}
 
 		var instPorts []instance.PortMapping
+		var mainHostPort int
 		for _, p := range spec.Ports {
+			if mainHostPort == 0 {
+				mainHostPort = p.External
+			}
 			instPorts = append(instPorts, instance.PortMapping{
 				Internal: p.Internal,
 				External: p.External,
 			})
 		}
 
+		e.proberMu.Lock()
+		e.activeSpecs[inst.ID] = claimResp.Spec
+		if mainHostPort > 0 {
+			e.activePorts[inst.ID] = mainHostPort
+		}
+		e.proberMu.Unlock()
+
 		_ = e.APIClient.ReportInstanceStatus(inst.ID, e.NodeID, claimResp.ExecutionID, status, instance.HealthUnknown, info.ContainerID, instPorts)
+
+		if status == instance.StatusRunning {
+			inst.ExecutionID = claimResp.ExecutionID
+			e.startProbers(inst, mainHostPort, claimResp.Spec)
+		}
 	}
 }
 
@@ -148,6 +174,7 @@ func (e *InstanceExecutor) monitorActive() {
 				_ = e.Runtime.Remove(e.ctx, containerName)
 			}
 			e.Ports.Release(inst.ID)
+			e.stopProbers(inst.ID)
 			continue
 		}
 		if inst.Status == instance.StatusCrashed {
@@ -186,9 +213,19 @@ func (e *InstanceExecutor) monitorActive() {
 				_ = e.Runtime.Remove(e.ctx, containerName)
 				targetStatus = instance.StatusStopped
 				targetHealth = instance.HealthUnknown
+				e.stopProbers(inst.ID)
 			} else if inst.Status == instance.StatusStarting {
 				targetStatus = instance.StatusRunning
-				targetHealth = instance.HealthHealthy
+				targetHealth = inst.Health
+				e.proberMu.Lock()
+				spec, ok1 := e.activeSpecs[inst.ID]
+				port, ok2 := e.activePorts[inst.ID]
+				e.proberMu.Unlock()
+				if ok1 && ok2 {
+					e.startProbers(inst, port, spec)
+				} else if ok1 {
+					e.startProbers(inst, 0, spec)
+				}
 			}
 		case runtime.StateExited:
 			if inst.Status == instance.StatusStopping {
@@ -196,6 +233,7 @@ func (e *InstanceExecutor) monitorActive() {
 				targetStatus = instance.StatusStopped
 			} else {
 				targetStatus = instance.StatusCrashed
+				e.stopProbers(inst.ID)
 			}
 		}
 

@@ -124,6 +124,7 @@ The agent:
 - Exactly-once physical execution is not guaranteed. Network partitions can result in duplicate execution.
 - Agent processes cannot be remotely killed after Control Plane recovery.
 - Jobs and events remain in memory indefinitely (no garbage collection).
+- **Agent Restart Probes:** Upon restart, the Agent does not recreate in-memory health probe loops for existing `RUNNING` instances due to lack of persisted `AppSpec`.
 
 ## Step 8B: Instance Lifecycle Execution
 Instances use a **dedicated ExecutionID** distinct from Jobs.
@@ -148,9 +149,21 @@ Introduced `Service` domain, local `PortAllocator`, and `RoutingReconciler` to g
 - Added `Service` CRUD HTTP API with strict Application identity constraints.
 - Fixed an edge case where `ASSIGNED/STARTING` instances on dead nodes were trapped in `UNKNOWN` by ensuring the Agent's `pollAndClaim` also picks up unclaimed `UNKNOWN` instances upon node recovery.
 
-## Step 8H: Secrets Management
-- Implemented application-scoped `SecretRegistry` storing values exclusively in-memory.
-- Added `secret:<name>` JIT resolution during Instance Claim to protect Deployment immutability.
-- Added secret rotation idempotency: `DeployApp` forces a new Deployment if `Secret.UpdatedAt > Deployment.CreatedAt`.
-- A missing secret causes `InstanceHandler.Claim` to immediately transition the Instance to `CRASHED`.
-- Plaintext boundaries strictly enforced: `GET /secrets` returns metadata only. `Claim` failures return 500 without logging the value. Docker receives secrets directly into `Env` map.
+## Recent Milestones
+* **8F**: Developer Loop (Deploy, Logs).
+* **8G**: Custom Domains & Ingress.
+* **8H**: Secrets Management.
+* **8I**: Application Health Probes & Readiness (Design).
+* **8I**: Application Health Probes & Readiness (Design).
+
+## Current Focus (Milestone 8I Design)
+
+**Goal:** Implement application health probes (readiness and liveness) to safely gate traffic routing and deployment rollouts, while keeping readiness failures strictly independent of process crashes.
+
+### 8I Design Highlights:
+*   **Separation of Concerns**: Readiness controls routing eligibility (`HEALTHY` vs `UNHEALTHY`). Liveness controls container termination (`CRASHED`).
+*   **AppSpec Probes**: Support HTTP/TCP probes with explicit `ReadinessProbe` and `LivenessProbe` configurations. Thresholds require *consecutive* results.
+*   **Agent Execution**: Agent strictly probes node-local mapped ports to guarantee security and target isolation. Bounded contexts prevent goroutine leaks.
+*   **Default Behavior**: If no probe is defined, assume `HEALTHY` immediately upon container start (Status `RUNNING`).
+*   **Rollout Gating**: Reconciler relies on `HEALTHY` status to progress rollouts.
+*   **Crash-Loop Integration**: Readiness failures do *not* increment crash loops. Only liveness failures or process exits trigger `CRASHED` and increment the existing circuit breaker.

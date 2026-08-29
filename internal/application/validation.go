@@ -13,6 +13,13 @@ func ValidateAppSpec(spec AppSpec) error {
 		}
 	}
 
+	if err := validateProbe(spec.ReadinessProbe); err != nil {
+		return err
+	}
+	if err := validateProbe(spec.LivenessProbe); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -28,4 +35,35 @@ func EnsureDefaultStrategy(spec *AppSpec) {
 		// The design says "If left empty, default to MaxSurge = 25% (min 1)".
 		// But they passed a strategy, so if they passed surge=0 and unavailable=1, it's valid.
 	}
+}
+
+func validateProbe(p *Probe) error {
+	if p == nil {
+		return nil
+	}
+	if p.Type != "HTTP" && p.Type != "TCP" {
+		return errors.New("invalid probe type, must be HTTP or TCP")
+	}
+	if p.Port <= 0 || p.Port > 65535 {
+		return errors.New("invalid probe port")
+	}
+	if p.Type == "HTTP" && p.Path == "" {
+		return errors.New("HTTP probe requires a path")
+	}
+	if p.InitialDelaySecs < 0 {
+		return errors.New("probe initial delay cannot be negative")
+	}
+	if p.PeriodSecs <= 0 {
+		return errors.New("probe period must be > 0")
+	}
+	if p.TimeoutSecs <= 0 {
+		return errors.New("probe timeout must be > 0")
+	}
+	if p.SuccessThreshold <= 0 {
+		return errors.New("probe success threshold must be > 0")
+	}
+	if p.FailureThreshold <= 0 {
+		return errors.New("probe failure threshold must be > 0")
+	}
+	return nil
 }
