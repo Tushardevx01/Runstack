@@ -12,14 +12,16 @@ import (
 type InstanceScheduler struct {
 	nodeRegistry       *node.Registry
 	instanceRegistry   *instance.Registry
+	capacityCalculator *CapacityCalculator
 	mu                 sync.Mutex
 	lastAssignedNodeID string
 }
 
-func NewInstanceScheduler(nodeRegistry *node.Registry, instanceRegistry *instance.Registry) *InstanceScheduler {
+func NewInstanceScheduler(nodeRegistry *node.Registry, instanceRegistry *instance.Registry, capCalc *CapacityCalculator) *InstanceScheduler {
 	return &InstanceScheduler{
-		nodeRegistry:     nodeRegistry,
-		instanceRegistry: instanceRegistry,
+		nodeRegistry:       nodeRegistry,
+		instanceRegistry:   instanceRegistry,
+		capacityCalculator: capCalc,
 	}
 }
 
@@ -39,19 +41,7 @@ func (s *InstanceScheduler) SchedulePendingInstances() error {
 		return nil
 	}
 
-	sort.Slice(onlineNodes, func(i, j int) bool {
-		return onlineNodes[i].ID < onlineNodes[j].ID
-	})
-
-	startIndex := 0
-	if s.lastAssignedNodeID != "" {
-		for i, n := range onlineNodes {
-			if n.ID > s.lastAssignedNodeID {
-				startIndex = i
-				break
-			}
-		}
-	}
+	caps := s.capacityCalculator.CalculateAll(onlineNodes)
 
 	instances := s.instanceRegistry.List()
 	var pendingInstances []instance.Instance
@@ -65,15 +55,60 @@ func (s *InstanceScheduler) SchedulePendingInstances() error {
 		return pendingInstances[i].ID < pendingInstances[j].ID
 	})
 
-	currentIndex := startIndex
 	for _, inst := range pendingInstances {
-		nodeID := onlineNodes[currentIndex].ID
+		dep, err := s.capacityCalculator.DeploymentRegistry.Get(inst.DeploymentID)
+		if err != nil {
+			continue
+		}
 
-		_, err := s.instanceRegistry.UpdateState(inst.ID, instance.StatusAssigned, nodeID, "")
+		reqCPU := 0.0
+		reqMem := 0
+		if dep.SpecSnapshot.Resources != nil {
+			reqCPU = dep.SpecSnapshot.Resources.CPU
+			reqMem = dep.SpecSnapshot.Resources.MemoryMB
+		}
+
+		var eligibleNodes []node.Node
+		for _, n := range onlineNodes {
+			c := caps[n.ID]
+			if c.AvailableCPU >= reqCPU && c.AvailableMemoryMB >= reqMem {
+				eligibleNodes = append(eligibleNodes, n)
+			}
+		}
+
+		if len(eligibleNodes) == 0 {
+			slog.Warn("Insufficient capacity for instance", "instance_id", inst.ID, "cpu_requested", reqCPU, "memory_requested", reqMem)
+			s.capacityCalculator.DeploymentRegistry.UpdateRolloutStatusOnly(inst.DeploymentID, dep.RolloutStatus, "insufficient_capacity")
+			continue
+		}
+
+		sort.Slice(eligibleNodes, func(i, j int) bool {
+			return eligibleNodes[i].ID < eligibleNodes[j].ID
+		})
+
+		startIndex := 0
+		if s.lastAssignedNodeID != "" {
+			for i, n := range eligibleNodes {
+				if n.ID > s.lastAssignedNodeID {
+					startIndex = i
+					break
+				}
+			}
+		}
+
+		selectedNode := eligibleNodes[startIndex]
+
+		_, err = s.instanceRegistry.UpdateState(inst.ID, instance.StatusAssigned, selectedNode.ID, "")
 		if err == nil {
-			slog.Info("instance assigned", "instance_id", inst.ID, "node_id", nodeID)
-			s.lastAssignedNodeID = nodeID
-			currentIndex = (currentIndex + 1) % len(onlineNodes)
+			s.capacityCalculator.DeploymentRegistry.UpdateRolloutStatusOnly(inst.DeploymentID, dep.RolloutStatus, "")
+			slog.Info("Instance scheduled", "instance_id", inst.ID, "node_id", selectedNode.ID)
+			s.lastAssignedNodeID = selectedNode.ID
+
+			// Deduct from local caps cache
+			cap := caps[selectedNode.ID]
+			cap.AvailableCPU -= reqCPU
+			cap.AvailableMemoryMB -= reqMem
+			caps[selectedNode.ID] = cap
 		}
 	}
 

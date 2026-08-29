@@ -3,6 +3,15 @@ package application
 import "errors"
 
 func ValidateAppSpec(spec AppSpec) error {
+	if spec.Resources != nil {
+		if spec.Resources.CPU <= 0 {
+			return errors.New("CPU must be positive")
+		}
+		if spec.Resources.MemoryMB <= 0 {
+			return errors.New("MemoryMB must be positive")
+		}
+	}
+
 	if spec.Replicas < 0 {
 		return errors.New("replicas cannot be negative")
 	}

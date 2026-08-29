@@ -37,9 +37,12 @@ type ContainerSpec struct {
 	Args          []string
 	Environment   map[string]string
 	Ports         []PortMapping
+	CPU           float64
+	MemoryMB      int
 }
 
 type ContainerInfo struct {
+	OOMKilled   bool
 	ContainerID string
 	State       ContainerState
 }

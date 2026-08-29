@@ -96,6 +96,10 @@ func (s *AppService) RollbackApp(id string, targetDeploymentID string, force boo
 		return application.Application{}, err
 	}
 
+	if dep.ApplicationID != app.ID {
+		return application.Application{}, errors.New("forbidden: deployment does not belong to this application")
+	}
+
 	if !force && (dep.Degraded || dep.RolloutStatus == deployment.RolloutFailed) {
 		return application.Application{}, errors.New("cannot rollback to a DEGRADED or FAILED deployment without force=true")
 	}

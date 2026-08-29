@@ -70,6 +70,14 @@ func (d *DockerRuntime) Start(ctx context.Context, spec runtime.ContainerSpec) (
 		args = append(args, "-l", "runstack.deployment.id="+spec.DeploymentID)
 	}
 
+	if spec.CPU > 0 {
+		args = append(args, fmt.Sprintf("--cpus=%f", spec.CPU))
+	}
+	if spec.MemoryMB > 0 {
+		args = append(args, fmt.Sprintf("--memory=%dm", spec.MemoryMB))
+
+	}
+
 	// Environment
 	for k, v := range spec.Environment {
 		if strings.Contains(k, "=") || strings.HasPrefix(k, "-") {
@@ -186,6 +194,7 @@ type inspectInfo struct {
 	State       runtime.ContainerState
 	InstanceID  string
 	ExecutionID string
+	OOMKilled   bool
 }
 
 func (d *DockerRuntime) Logs(ctx context.Context, containerID string) (io.ReadCloser, error) {
@@ -224,7 +233,8 @@ func (d *DockerRuntime) inspect(ctx context.Context, idOrName string) (inspectIn
 	var inspectData []struct {
 		Id    string `json:"Id"`
 		State struct {
-			Status string `json:"Status"`
+			Status    string `json:"Status"`
+			OOMKilled bool   `json:"OOMKilled"`
 		} `json:"State"`
 		Config struct {
 			Labels map[string]string `json:"Labels"`
@@ -256,6 +266,7 @@ func (d *DockerRuntime) inspect(ctx context.Context, idOrName string) (inspectIn
 		State:       state,
 		InstanceID:  labels["runstack.instance.id"],
 		ExecutionID: labels["runstack.execution.id"],
+		OOMKilled:   data.State.OOMKilled,
 	}, nil
 }
 

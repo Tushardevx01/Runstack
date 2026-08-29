@@ -26,7 +26,7 @@ func TestJob_Transitions(t *testing.T) {
 
 func TestRegistry_Create(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test-job", "echo test", 0)
+	j := r.Create("test-job", "echo test", 0, 0, 0)
 	if j.Name != "test-job" || j.Status != StatusPending {
 		t.Errorf("unexpected job creation state")
 	}
@@ -34,7 +34,7 @@ func TestRegistry_Create(t *testing.T) {
 
 func TestRegistry_Update(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test-job", "echo test", 0)
+	j := r.Create("test-job", "echo test", 0, 0, 0)
 
 	newStatus := StatusAssigned
 	nodeID := "node-1"
@@ -68,7 +68,7 @@ func TestRegistry_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			j := r.Create("concurrent-job", "echo", 0)
+			j := r.Create("concurrent-job", "echo", 0, 0, 0)
 
 			s := StatusAssigned
 			r.Update(j.ID, UpdateParams{Status: &s})
@@ -85,7 +85,7 @@ func TestRegistry_Concurrent(t *testing.T) {
 
 func TestRegistry_Claim(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo 1", 0)
+	j := r.Create("test", "echo 1", 0, 0, 0)
 
 	// Cannot claim PENDING job
 	_, err := r.Claim(j.ID, "node-1")
@@ -117,7 +117,7 @@ func TestRegistry_Claim(t *testing.T) {
 func TestRegistry_ReportResult(t *testing.T) {
 	r := NewRegistry()
 
-	j := r.Create("test-job", "echo test", 0)
+	j := r.Create("test-job", "echo test", 0, 0, 0)
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
 	r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
@@ -151,7 +151,7 @@ func TestRegistry_ReportResult(t *testing.T) {
 	}
 
 	// Test failing result
-	j2 := r.Create("test-fail", "exit 1", 0)
+	j2 := r.Create("test-fail", "exit 1", 0, 0, 0)
 	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 	claimed2, _ := r.Claim(j2.ID, "node-1")
 	execID2 := claimed2.ExecutionID
@@ -164,7 +164,7 @@ func TestRegistry_ReportResult(t *testing.T) {
 
 func TestRegistry_EventHistory(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test-events", "echo 1", 0)
+	j := r.Create("test-events", "echo 1", 0, 0, 0)
 
 	events, err := r.GetEvents(j.ID)
 	if err != nil {
@@ -221,7 +221,7 @@ func TestRegistry_EventHistory(t *testing.T) {
 
 func TestRegistry_EventHistory_Failure(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test-events", "echo 1", 0)
+	j := r.Create("test-events", "echo 1", 0, 0, 0)
 
 	statusAssigned := StatusAssigned
 	nodeID := "node-1"
@@ -238,9 +238,9 @@ func TestRegistry_EventHistory_Failure(t *testing.T) {
 
 func TestRegistry_RecoverExecutionTimeouts(t *testing.T) {
 	r := NewRegistry()
-	j1 := r.Create("job1", "echo 1", 1)
-	j2 := r.Create("job2", "echo 2", 1)
-	j3 := r.Create("job3", "echo 3", 1)
+	j1 := r.Create("job1", "echo 1", 1, 0, 0)
+	j2 := r.Create("job2", "echo 2", 1, 0, 0)
+	j3 := r.Create("job3", "echo 3", 1, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -309,7 +309,7 @@ func TestRegistry_RecoverExecutionTimeouts(t *testing.T) {
 
 func TestRegistry_RecoverExecutionTimeouts_MissingStartedAt(t *testing.T) {
 	r := NewRegistry()
-	j1 := r.Create("job1", "echo 1", 1)
+	j1 := r.Create("job1", "echo 1", 1, 0, 0)
 
 	r.mu.Lock()
 	r.jobs[j1.ID].Status = StatusRunning
@@ -325,8 +325,8 @@ func TestRegistry_RecoverExecutionTimeouts_MissingStartedAt(t *testing.T) {
 
 func TestRegistry_RecoverExecutionTimeouts_WrongState(t *testing.T) {
 	r := NewRegistry()
-	jAssigned := r.Create("jobAssigned", "echo a", 0)
-	jFailed := r.Create("jobFailed", "echo f", 0)
+	jAssigned := r.Create("jobAssigned", "echo a", 0, 0, 0)
+	jFailed := r.Create("jobFailed", "echo f", 0, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -349,7 +349,7 @@ func TestRegistry_RecoverExecutionTimeouts_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for i := 0; i < 100; i++ {
-		j := r.Create(fmt.Sprintf("job-%d", i), "echo", 1)
+		j := r.Create(fmt.Sprintf("job-%d", i), "echo", 1, 0, 0)
 		statusAssigned := StatusAssigned
 		r.Update(j.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 		j, _ = r.Claim(j.ID, nodeID)
@@ -373,9 +373,9 @@ func TestRegistry_RecoverExecutionTimeouts_Concurrency(t *testing.T) {
 
 func TestRegistry_RecoverNodeJobs(t *testing.T) {
 	r := NewRegistry()
-	j1 := r.Create("job1", "echo 1", 1) // assigned and running on node-1
-	j2 := r.Create("job2", "echo 2", 1) // assigned on node-1, not running
-	j3 := r.Create("job3", "echo 3", 1) // assigned and running on node-2
+	j1 := r.Create("job1", "echo 1", 1, 0, 0) // assigned and running on node-1
+	j2 := r.Create("job2", "echo 2", 1, 0, 0) // assigned on node-1, not running
+	j3 := r.Create("job3", "echo 3", 1, 0, 0) // assigned and running on node-2
 
 	node1 := "node-1"
 	node2 := "node-2"
@@ -418,7 +418,7 @@ func TestRegistry_RecoverNodeJobs(t *testing.T) {
 
 func TestRegistry_RetryBudget_MaxRetries0(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job", "exit 1", 0)
+	j := r.Create("job", "exit 1", 0, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -437,7 +437,7 @@ func TestRegistry_RetryBudget_MaxRetries0(t *testing.T) {
 
 func TestRegistry_RetryBudget_MaxRetries1(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job", "exit 1", 1)
+	j := r.Create("job", "exit 1", 1, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -467,7 +467,7 @@ func TestRegistry_RetryBudget_MaxRetries1(t *testing.T) {
 
 func TestRegistry_StaleResult_NoMutation(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job", "exit 1", 1)
+	j := r.Create("job", "exit 1", 1, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -503,7 +503,7 @@ func TestRegistry_StaleResult_NoMutation(t *testing.T) {
 
 func TestRegistry_TerminalFencing(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job", "exit 1", 0) // MaxRetries=0 => 1 attempt max
+	j := r.Create("job", "exit 1", 0, 0, 0) // MaxRetries=0 => 1 attempt max
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -536,7 +536,7 @@ func TestRegistry_TerminalFencing(t *testing.T) {
 	}
 
 	// 3. Terminal SUCCEEDED
-	j2 := r.Create("job2", "echo", 0)
+	j2 := r.Create("job2", "echo", 0, 0, 0)
 	r.Update(j2.ID, UpdateParams{Status: &statusAssigned, AssignedNodeID: &nodeID})
 	claimed2, _ := r.Claim(j2.ID, nodeID)
 	r.ReportResult(j2.ID, nodeID, claimed2.ExecutionID, JobResult{ExitCode: 0})
@@ -554,7 +554,7 @@ func TestRegistry_TerminalFencing(t *testing.T) {
 
 func TestRegistry_TerminalFencing_WrongNodeID(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job", "exit 1", 0)
+	j := r.Create("job", "exit 1", 0, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -577,7 +577,7 @@ func TestRegistry_TerminalFencing_WrongNodeID(t *testing.T) {
 
 func TestRegistry_TerminalFencing_WrongExecutionID(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job", "exit 1", 0)
+	j := r.Create("job", "exit 1", 0, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -599,7 +599,7 @@ func TestRegistry_TerminalFencing_WrongExecutionID(t *testing.T) {
 
 func TestRegistry_TerminalFencing_NoMutation(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job", "exit 1", 0)
+	j := r.Create("job", "exit 1", 0, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -639,7 +639,7 @@ func TestRegistry_TerminalFencing_NoMutation(t *testing.T) {
 
 func TestRegistry_TerminalFencing_ConcurrentReportResult(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job-concurrent", "echo", 0)
+	j := r.Create("job-concurrent", "echo", 0, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -680,7 +680,7 @@ func TestRegistry_TerminalFencing_ConcurrentReportResult(t *testing.T) {
 
 func TestRegistry_TerminalFencing_ConcurrentContradictoryResults(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job-concurrent-contradict", "echo", 0)
+	j := r.Create("job-concurrent-contradict", "echo", 0, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -739,7 +739,7 @@ func TestRegistry_TerminalFencing_ConcurrentContradictoryResults(t *testing.T) {
 
 func TestRegistry_TerminalFencing_ContradictoryNoMutation(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("job", "exit 1", 0)
+	j := r.Create("job", "exit 1", 0, 0, 0)
 
 	nodeID := "node-1"
 	statusAssigned := StatusAssigned
@@ -776,7 +776,7 @@ func TestRegistry_TerminalFencing_ContradictoryNoMutation(t *testing.T) {
 
 func TestRegistry_Update_CannotOverwriteStartedAtOnRunning(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	s := StatusAssigned
 	nodeID := "node-1"
@@ -801,7 +801,7 @@ func TestRegistry_Update_CannotOverwriteStartedAtOnRunning(t *testing.T) {
 
 func TestRegistry_Update_CannotManipulateFailedJob(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	s := StatusAssigned
 	nodeID := "node-1"
@@ -836,7 +836,7 @@ func TestRegistry_Update_CannotManipulateFailedJob(t *testing.T) {
 
 func TestRegistry_Update_AssignedToPendingBlocked(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	s := StatusAssigned
 	nodeID := "node-1"
@@ -851,7 +851,7 @@ func TestRegistry_Update_AssignedToPendingBlocked(t *testing.T) {
 
 func TestRegistry_Update_CannotOverwriteAssignedNodeOnRunning(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	s := StatusAssigned
 	nodeID := "node-1"
@@ -876,7 +876,7 @@ func TestRegistry_Update_CannotOverwriteAssignedNodeOnRunning(t *testing.T) {
 
 func TestRegistry_Update_CannotOverwriteFieldsOnSucceeded(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	s := StatusAssigned
 	nodeID := "node-1"
@@ -904,7 +904,7 @@ func TestRegistry_Update_CannotOverwriteFieldsOnSucceeded(t *testing.T) {
 
 func TestRegistry_Update_PendingToFailedBlocked(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 1)
+	j := r.Create("test", "echo", 1, 0, 0)
 
 	// An adversary must not be able to PATCH a PENDING job to FAILED,
 	// bypassing the entire execution lifecycle.
@@ -923,7 +923,7 @@ func TestRegistry_Update_PendingToFailedBlocked(t *testing.T) {
 
 func TestRegistry_Update_AssignedToFailedBlocked(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	s := StatusAssigned
 	nodeID := "node-1"
@@ -944,7 +944,7 @@ func TestRegistry_Update_AssignedToFailedBlocked(t *testing.T) {
 
 func TestRegistry_Update_PendingCannotSetAssignedNodeID(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	// Setting AssignedNodeID on a PENDING job without a status change
 	// creates an impossible state invariant (PENDING with assigned node).
@@ -962,7 +962,7 @@ func TestRegistry_Update_PendingCannotSetAssignedNodeID(t *testing.T) {
 
 func TestRegistry_Update_PendingCannotSetStartedAt(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	now := time.Now().UTC()
 	_, err := r.Update(j.ID, UpdateParams{StartedAt: &now})
@@ -978,7 +978,7 @@ func TestRegistry_Update_PendingCannotSetStartedAt(t *testing.T) {
 
 func TestRegistry_Update_PendingCannotSetResult(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	result := &JobResult{ExitCode: 0, Stdout: "hacked"}
 	_, err := r.Update(j.ID, UpdateParams{Result: result})
@@ -994,7 +994,7 @@ func TestRegistry_Update_PendingCannotSetResult(t *testing.T) {
 
 func TestRegistry_ReportResult_EmptyNodeID(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	nodeID := "node-1"
 	s := StatusAssigned
@@ -1016,7 +1016,7 @@ func TestRegistry_ReportResult_EmptyNodeID(t *testing.T) {
 
 func TestRegistry_ReportResult_EmptyExecutionID(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 0)
+	j := r.Create("test", "echo", 0, 0, 0)
 
 	nodeID := "node-1"
 	s := StatusAssigned
@@ -1037,7 +1037,7 @@ func TestRegistry_ReportResult_EmptyExecutionID(t *testing.T) {
 
 func TestRegistry_StaleResult_AllPermutations(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 1)
+	j := r.Create("test", "echo", 1, 0, 0)
 
 	nodeID := "node-1"
 	s := StatusAssigned
@@ -1096,7 +1096,7 @@ func TestRegistry_StaleResult_AllPermutations(t *testing.T) {
 
 func TestRegistry_RecoveryDoesNotIncrementAttempts(t *testing.T) {
 	r := NewRegistry()
-	j := r.Create("test", "echo", 2)
+	j := r.Create("test", "echo", 2, 0, 0)
 
 	nodeID := "node-1"
 	s := StatusAssigned

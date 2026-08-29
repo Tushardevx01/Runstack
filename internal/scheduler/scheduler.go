@@ -4,27 +4,29 @@ import (
 	"log/slog"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
-	"time"
 )
 
 type Scheduler struct {
 	nodeRegistry       *node.Registry
 	jobRegistry        *job.Registry
+	capacityCalculator *CapacityCalculator
 	ExecutionTimeout   time.Duration
 	NodeGracePeriod    time.Duration
 	mu                 sync.Mutex
 	lastAssignedNodeID string
 }
 
-func New(nodeRegistry *node.Registry, jobRegistry *job.Registry) *Scheduler {
+func New(nodeRegistry *node.Registry, jobRegistry *job.Registry, capCalc *CapacityCalculator) *Scheduler {
 	return &Scheduler{
-		nodeRegistry:     nodeRegistry,
-		jobRegistry:      jobRegistry,
-		ExecutionTimeout: 2 * time.Hour,
-		NodeGracePeriod:  30 * time.Second,
+		nodeRegistry:       nodeRegistry,
+		jobRegistry:        jobRegistry,
+		capacityCalculator: capCalc,
+		ExecutionTimeout:   2 * time.Hour,
+		NodeGracePeriod:    30 * time.Second,
 	}
 }
 
@@ -59,19 +61,7 @@ func (s *Scheduler) SchedulePendingJobs() error {
 		return nil
 	}
 
-	sort.Slice(onlineNodes, func(i, j int) bool {
-		return onlineNodes[i].ID < onlineNodes[j].ID
-	})
-
-	startIndex := 0
-	if s.lastAssignedNodeID != "" {
-		for i, n := range onlineNodes {
-			if n.ID > s.lastAssignedNodeID {
-				startIndex = i
-				break
-			}
-		}
-	}
+	caps := s.capacityCalculator.CalculateAll(onlineNodes)
 
 	// Step 4: Find PENDING jobs
 	jobs := s.jobRegistry.List()
@@ -81,26 +71,58 @@ func (s *Scheduler) SchedulePendingJobs() error {
 			pendingJobs = append(pendingJobs, j)
 		}
 	}
-	// Sort jobs deterministically
+
 	sort.Slice(pendingJobs, func(i, j int) bool {
-		return pendingJobs[i].ID < pendingJobs[j].ID
+		return pendingJobs[i].CreatedAt.Before(pendingJobs[j].CreatedAt)
 	})
 
-	// Step 5: Assign jobs
-	currentIndex := startIndex
 	for _, j := range pendingJobs {
+		reqCPU := j.CPU
+		reqMem := j.MemoryMB
+
+		var eligibleNodes []node.Node
+		for _, n := range onlineNodes {
+			c := caps[n.ID]
+			if c.AvailableCPU >= reqCPU && c.AvailableMemoryMB >= reqMem {
+				eligibleNodes = append(eligibleNodes, n)
+			}
+		}
+
+		if len(eligibleNodes) == 0 {
+			slog.Warn("Insufficient capacity for job", "job_id", j.ID, "cpu_requested", reqCPU, "memory_requested", reqMem)
+			continue
+		}
+
+		sort.Slice(eligibleNodes, func(i, j int) bool {
+			return eligibleNodes[i].ID < eligibleNodes[j].ID
+		})
+
+		startIndex := 0
+		if s.lastAssignedNodeID != "" {
+			for i, n := range eligibleNodes {
+				if n.ID > s.lastAssignedNodeID {
+					startIndex = i
+					break
+				}
+			}
+		}
+
+		selectedNode := eligibleNodes[startIndex]
 		status := job.StatusAssigned
-		nodeID := onlineNodes[currentIndex].ID
 
 		_, err := s.jobRegistry.Update(j.ID, job.UpdateParams{
 			Status:         &status,
-			AssignedNodeID: &nodeID,
+			AssignedNodeID: &selectedNode.ID,
 		})
 
 		if err == nil {
-			slog.Info("job assigned", "job_id", j.ID, "node_id", nodeID)
-			s.lastAssignedNodeID = nodeID
-			currentIndex = (currentIndex + 1) % len(onlineNodes)
+			slog.Info("Job scheduled", "job_id", j.ID, "node_id", selectedNode.ID)
+			s.lastAssignedNodeID = selectedNode.ID
+
+			cap := caps[selectedNode.ID]
+			cap.AvailableCPU -= reqCPU
+			cap.AvailableMemoryMB -= reqMem
+			caps[selectedNode.ID] = cap
 		}
 	}
 

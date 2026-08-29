@@ -1,7 +1,10 @@
 package scheduler
 
 import (
+	"github.com/Tushardevx01/runstack/internal/application"
+	"github.com/Tushardevx01/runstack/internal/deployment"
 	"github.com/Tushardevx01/runstack/internal/instance"
+	"github.com/Tushardevx01/runstack/internal/job"
 	"github.com/Tushardevx01/runstack/internal/node"
 	"testing"
 )
@@ -14,10 +17,12 @@ func TestInstanceScheduler_DeterministicRoundRobin(t *testing.T) {
 	nodeReg.Register(node.Node{ID: "node-A"})
 	nodeReg.Register(node.Node{ID: "node-B"})
 
-	s := NewInstanceScheduler(nodeReg, instReg)
+	depReg := deployment.NewRegistry()
+	dep, _ := depReg.Create("app1", application.AppSpec{})
+	s := NewInstanceScheduler(nodeReg, instReg, NewCapacityCalculator(application.NewRegistry(), depReg, instReg, job.NewRegistry()))
 
-	i1, _ := instReg.Create("app1", "dep1")
-	i2, _ := instReg.Create("app1", "dep1")
+	i1, _ := instReg.Create("app1", dep.ID)
+	i2, _ := instReg.Create("app1", dep.ID)
 
 	s.SchedulePendingInstances()
 
@@ -39,9 +44,11 @@ func TestInstanceScheduler_NoOnlineNodes(t *testing.T) {
 	nodeReg := node.NewRegistry()
 	instReg := instance.NewRegistry()
 
-	s := NewInstanceScheduler(nodeReg, instReg)
+	depReg := deployment.NewRegistry()
+	dep, _ := depReg.Create("app1", application.AppSpec{})
+	s := NewInstanceScheduler(nodeReg, instReg, NewCapacityCalculator(application.NewRegistry(), depReg, instReg, job.NewRegistry()))
 
-	i1, _ := instReg.Create("app1", "dep1")
+	i1, _ := instReg.Create("app1", dep.ID)
 
 	err := s.SchedulePendingInstances()
 	if err != nil {

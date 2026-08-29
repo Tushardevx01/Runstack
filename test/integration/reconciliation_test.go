@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"github.com/Tushardevx01/runstack/internal/job"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func TestEndToEndReconciliation(t *testing.T) {
 
 	appService := service.NewAppService(appReg, depReg, application.NewSecretRegistry())
 	reconciler := scheduler.NewInstanceReconciler(appReg, depReg, instReg, nodeReg)
-	instScheduler := scheduler.NewInstanceScheduler(nodeReg, instReg)
+	instScheduler := scheduler.NewInstanceScheduler(nodeReg, instReg, scheduler.NewCapacityCalculator(appReg, depReg, instReg, &job.Registry{}))
 
 	// Register 2 nodes
 	nodeReg.Register(node.Node{ID: "node-1", Status: node.StatusOnline})

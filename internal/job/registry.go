@@ -21,7 +21,7 @@ func NewRegistry() *Registry {
 	}
 }
 
-func (r *Registry) Create(name, command string, maxRetries int) *Job {
+func (r *Registry) Create(name, command string, maxRetries int, cpu float64, mem int) *Job {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

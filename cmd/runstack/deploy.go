@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,13 +21,16 @@ type RunstackConfig struct {
 		ContainerPort int `json:"container_port"`
 		HostPort      int `json:"host_port,omitempty"`
 	} `json:"ports,omitempty"`
-	Replicas int `json:"replicas,omitempty"`
+	Replicas int     `json:"replicas,omitempty"`
+	CPU      float64 `json:"cpu,omitempty"`
+	MemoryMB int     `json:"memory_mb,omitempty"`
 }
 
 func runDeploy(args []string) error {
-	if len(args) > 0 {
-		return fmt.Errorf("deploy takes no arguments (uses runstack.json)")
-	}
+	fs := flag.NewFlagSet("deploy", flag.ExitOnError)
+	cpuFlag := fs.Float64("cpu", 0, "CPU cores to reserve (e.g. 1.0)")
+	memFlag := fs.Int("memory", 0, "Memory to reserve in MB (e.g. 512)")
+	fs.Parse(args)
 
 	b, err := os.ReadFile("runstack.json")
 	if err != nil {
@@ -44,6 +48,21 @@ func runDeploy(args []string) error {
 
 	if strings.HasPrefix(config.Registry, "-") {
 		return fmt.Errorf("registry cannot start with a dash")
+	}
+
+	// Override with CLI flags if provided
+	if *cpuFlag > 0 {
+		config.CPU = *cpuFlag
+	}
+	if *memFlag > 0 {
+		config.MemoryMB = *memFlag
+	}
+
+	if config.CPU < 0 {
+		return fmt.Errorf("cpu must be non-negative")
+	}
+	if config.MemoryMB < 0 {
+		return fmt.Errorf("memory must be non-negative")
 	}
 
 	fmt.Println("Building image...")
@@ -65,7 +84,6 @@ func runDeploy(args []string) error {
 		return fmt.Errorf("push failed: %w", err)
 	}
 
-	// Get Digest
 	inspectArgs := []string{"inspect", "--format={{json .RepoDigests}}", config.Registry}
 	inspectCmd := exec.Command("docker", inspectArgs...)
 	out, err := inspectCmd.Output()
@@ -79,11 +97,9 @@ func runDeploy(args []string) error {
 	}
 
 	if len(digests) == 0 {
-		return fmt.Errorf("no RepoDigests found for image, ensure it was pushed successfully")
+		return fmt.Errorf("no RepoDigests found for image")
 	}
 
-	// The registry configured by user (e.g., ghcr.io/user/repo:latest)
-	// We want to extract the base name without tag
 	baseRepo := config.Registry
 	if idx := strings.LastIndex(baseRepo, ":"); idx != -1 && !strings.Contains(baseRepo[idx:], "/") {
 		baseRepo = baseRepo[:idx]
@@ -98,7 +114,6 @@ func runDeploy(args []string) error {
 	}
 
 	if digest == "" {
-		// Fallback to first if we couldn't match prefix
 		digest = digests[0]
 	}
 
@@ -128,6 +143,13 @@ func runDeploy(args []string) error {
 		Replicas:    replicas,
 	}
 
+	if config.CPU > 0 || config.MemoryMB > 0 {
+		spec.Resources = &application.ResourceRequirements{
+			CPU:      config.CPU,
+			MemoryMB: config.MemoryMB,
+		}
+	}
+
 	payload := map[string]interface{}{
 		"spec": spec,
 	}
@@ -144,8 +166,12 @@ func runDeploy(args []string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("control plane returned status %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		var errResp map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
+			return fmt.Errorf("deploy failed: %s", errResp["error"])
+		}
+		return fmt.Errorf("deploy failed with status: %d", resp.StatusCode)
 	}
 
 	fmt.Println("Deployment successful!")

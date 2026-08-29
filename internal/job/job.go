@@ -39,6 +39,8 @@ type Job struct {
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 	AssignedNodeID string     `json:"assignedNodeId,omitempty"`
 	ExecutionID    string     `json:"executionId,omitempty"`
+	CPU            float64    `json:"cpu,omitempty"`
+	MemoryMB       int        `json:"memory_mb,omitempty"`
 	MaxRetries     int        `json:"maxRetries"`
 	Attempts       int        `json:"attempts"`
 	Result         *JobResult `json:"result,omitempty"`

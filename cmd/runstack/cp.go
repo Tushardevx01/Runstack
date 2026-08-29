@@ -104,8 +104,9 @@ func runControlPlane() {
 		AppRegistry:     appRegistry,
 	}
 
-	sched := scheduler.New(registry, jobRegistry)
-	instSched := scheduler.NewInstanceScheduler(registry, instRegistry)
+	capCalc := scheduler.NewCapacityCalculator(appRegistry, depRegistry, instRegistry, jobRegistry)
+	sched := scheduler.New(registry, jobRegistry, capCalc)
+	instSched := scheduler.NewInstanceScheduler(registry, instRegistry, capCalc)
 	instReconciler := scheduler.NewInstanceReconciler(appRegistry, depRegistry, instRegistry, registry)
 	routingReconciler := scheduler.NewRoutingReconciler(appRegistry, instRegistry, registry, routeRegistry, domainRegistry, ingressRegistry, httpProxy)
 

@@ -93,6 +93,10 @@ func (e *InstanceExecutor) pollAndClaim() {
 			Args:          claimResp.Spec.Args,
 			Environment:   claimResp.Spec.Environment,
 		}
+		if claimResp.Spec.Resources != nil {
+			spec.CPU = claimResp.Spec.Resources.CPU
+			spec.MemoryMB = claimResp.Spec.Resources.MemoryMB
+		}
 
 		for _, p := range claimResp.Spec.Ports {
 			hostPort := p.HostPort
@@ -183,6 +187,7 @@ func (e *InstanceExecutor) monitorActive() {
 				_ = e.Runtime.Stop(e.ctx, containerName)
 			}
 			e.Ports.Release(inst.ID)
+			e.stopProbers(inst.ID)
 			// Leave the container around for manual docker logs debugging in V1
 			continue
 		}
@@ -214,7 +219,7 @@ func (e *InstanceExecutor) monitorActive() {
 				targetStatus = instance.StatusStopped
 				targetHealth = instance.HealthUnknown
 				e.stopProbers(inst.ID)
-			} else if inst.Status == instance.StatusStarting {
+			} else if inst.Status == instance.StatusStarting || inst.Status == instance.StatusUnknown {
 				targetStatus = instance.StatusRunning
 				targetHealth = inst.Health
 				e.proberMu.Lock()

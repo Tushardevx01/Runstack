@@ -15,9 +15,11 @@ type JobHandler struct {
 }
 
 type CreateJobRequest struct {
-	Name       string `json:"name"`
-	Command    string `json:"command"`
-	MaxRetries int    `json:"maxRetries"`
+	Name       string  `json:"name"`
+	Command    string  `json:"command"`
+	MaxRetries int     `json:"maxRetries"`
+	CPU        float64 `json:"cpu,omitempty"`
+	MemoryMB   int     `json:"memory_mb,omitempty"`
 }
 
 type UpdateJobRequest struct {
@@ -54,12 +56,21 @@ func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.CPU < 0 {
+		http.Error(w, "cpu must be non-negative", http.StatusBadRequest)
+		return
+	}
+	if req.MemoryMB < 0 {
+		http.Error(w, "memory_mb must be non-negative", http.StatusBadRequest)
+		return
+	}
+
 	if req.MaxRetries < 0 {
 		http.Error(w, "maxRetries must be non-negative", http.StatusBadRequest)
 		return
 	}
 
-	j := h.Registry.Create(req.Name, req.Command, req.MaxRetries)
+	j := h.Registry.Create(req.Name, req.Command, req.MaxRetries, req.CPU, req.MemoryMB)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
