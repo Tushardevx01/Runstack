@@ -147,3 +147,21 @@ RunStack uses Host-based routing. Domains are Application-scoped. Ingress mappin
 ### Secrets Management
 Secrets are fully decoupled from immutable Deployments and reside in an Application-scoped `SecretRegistry`. 
 Deployments store **references** (e.g., `secret:db-password`). The Control Plane resolves these references just-in-time when providing the runtime environment payload to the Agent during an Instance Claim. This isolates plaintext solely to process memory and completely avoids writing secrets into JSON responses, deployment histories, or system logs.
+
+
+## TLS & HTTPS Ingress (Milestone 8L)
+
+RunStack natively terminates TLS via the Let's Encrypt ACME HTTP-01 challenge.
+To preserve V1 constraints (No Database), all certificate private keys are held securely in-memory.
+
+**Deployment Port Mapping:**
+Internally, the RunStack Control Plane binds:
+- HTTP: Port 80 (or 8080)
+- HTTPS: Port 8443
+
+To expose standard HTTPS to the public internet, the deployment environment (e.g., Load Balancer, `iptables`, or NAT) must map:
+- `Public :443 -> RunStack :8443`
+- `Public :80  -> RunStack :80` (Required for HTTP-01 challenge)
+
+**Restart Volatility:**
+Certificates are held in RAM. Upon a Control Plane restart, certificates are lost. `autocert` will seamlessly re-request them when the first HTTPS SNI handshake arrives. Users must be aware of Let's Encrypt rate limits (e.g., 50 certificates per domain per week) if restarting the Control Plane excessively.

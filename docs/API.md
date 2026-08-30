@@ -121,3 +121,14 @@ Requests without a valid token receive `401 Unauthorized`. Requests with a valid
 - **`DELETE /api/v1/secrets/{id}`**
   Delete a secret.
 
+
+## Domain TLS
+
+`POST /api/v1/domains/{domain}/tls`
+Enable automatic TLS (ACME) for the domain.
+
+`GET /api/v1/domains/{domain}/tls`
+Check the certificate status.
+
+`DELETE /api/v1/domains/{domain}/tls`
+Disable TLS.

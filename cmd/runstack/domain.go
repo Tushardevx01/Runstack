@@ -16,6 +16,7 @@ func runDomain(args []string) error {
 		fmt.Println("Usage: runstack domain <command>")
 		fmt.Println("Commands:")
 		fmt.Println("  add <app-name|app-id> <domain>")
+		fmt.Println("  tls <enable|status> <domain>")
 		fmt.Println("  ls [app-name|app-id]")
 		fmt.Println("  rm <domain-id>")
 		os.Exit(1)
@@ -23,6 +24,39 @@ func runDomain(args []string) error {
 
 	command := args[0]
 	switch command {
+	case "tls":
+		if len(args) < 3 {
+			return fmt.Errorf("usage: runstack domain tls <enable|status> <domain>")
+		}
+		action := args[1]
+		domain := args[2]
+
+		switch action {
+		case "enable":
+			resp, err := getClient().Post(fmt.Sprintf("/api/v1/domains/%s/tls", domain), "application/json", nil)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != 200 {
+				return fmt.Errorf("failed: %s", resp.Status)
+			}
+			fmt.Printf("TLS enabled for %s (ACME process started)\n", domain)
+		case "status":
+			resp, err := getClient().Get(fmt.Sprintf("/api/v1/domains/%s/tls", domain))
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			var status map[string]interface{}
+			json.NewDecoder(resp.Body).Decode(&status)
+			fmt.Printf("Domain: %s\nStatus: %s\n", status["domain"], status["status"])
+			if errStr, ok := status["error"].(string); ok && errStr != "" {
+				fmt.Printf("Error: %s\n", errStr)
+			}
+		default:
+			return fmt.Errorf("unknown action: %s", action)
+		}
 	case "add":
 		if len(args) < 3 {
 			return fmt.Errorf("usage: runstack domain add <app-name|app-id> <domain>")

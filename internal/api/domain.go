@@ -11,6 +11,7 @@ import (
 type DomainHandler struct {
 	DomainRegistry *ingress.DomainRegistry
 	AppRegistry    *application.Registry
+	CertProvider   ingress.CertificateProvider
 }
 
 func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -82,4 +83,52 @@ func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *DomainHandler) EnableTLS(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("domain")
+
+	d, err := h.DomainRegistry.GetByName(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	d.TLS = true
+	h.DomainRegistry.UpdateStatus(d.ID, d.Status) // wait we need to update TLS flag
+	// I will use a direct update or a dedicated method in DomainRegistry
+	// Let's assume there is EnableTLS in DomainRegistry or we add it later
+	if err := h.DomainRegistry.EnableTLS(d.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if h.CertProvider != nil {
+		h.CertProvider.RequestCertificate(r.Context(), d.Name)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *DomainHandler) TLSStatus(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("domain")
+
+	_, err := h.DomainRegistry.GetByName(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	if h.CertProvider != nil {
+		cert, err := h.CertProvider.GetCertificate(name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(cert)
+		return
+	}
+
+	http.Error(w, "TLS not enabled on server", http.StatusNotImplemented)
 }

@@ -153,3 +153,17 @@ func (r *DomainRegistry) Delete(id string) error {
 	delete(r.domains, id)
 	return nil
 }
+
+func (r *DomainRegistry) EnableTLS(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	d, exists := r.domains[id]
+	if !exists {
+		return ErrDomainNotFound
+	}
+
+	d.TLS = true
+	r.domains[id] = d
+	return nil
+}

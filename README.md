@@ -133,3 +133,11 @@ Before committing, always validate your changes:
 ```bash
 make check
 ```
+
+
+### Milestone 8L: Automatic TLS & HTTPS Ingress (COMPLETED)
+- Automatic Let's Encrypt / ACME HTTP-01 certificate provision.
+- TLS SNI handshake validation and connection rejection for unknown domains.
+- In-memory certificate cache mapped directly to Autocert.
+- Automatic HTTP -> HTTPS redirection.
+- Control Plane restart volatility inherently acknowledged and guarded with bounded issuance.

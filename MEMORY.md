@@ -166,3 +166,11 @@ Introduced `Service` domain, local `PortAllocator`, and `RoutingReconciler` to g
 *   **Role Separation**: Strict separation between `OPERATOR` endpoints and `AGENT` endpoints (No full RBAC, just hard boundaries).
 *   **Remote Contexts**: CLI supports `~/.runstack/config` with multiple contexts to handle non-localhost endpoints.
 *   **V1 Constraints Maintained**: Continues with no-database design. CP tokens must be injected at startup.
+
+
+### Milestone 8L: Automatic TLS & HTTPS Ingress (COMPLETED)
+- Automatic Let's Encrypt / ACME HTTP-01 certificate provision.
+- TLS SNI handshake validation and connection rejection for unknown domains.
+- In-memory certificate cache mapped directly to Autocert.
+- Automatic HTTP -> HTTPS redirection.
+- Control Plane restart volatility inherently acknowledged and guarded with bounded issuance.

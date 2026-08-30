@@ -90,8 +90,18 @@ func runControlPlane(args []string) {
 	domainRegistry := ingress.NewDomainRegistry()
 	ingressRegistry := ingress.NewIngressRegistry()
 	secretRegistry := application.NewSecretRegistry()
+	acmeProvider := ingress.NewACMEProvider(domainRegistry)
 
-	httpProxy := route.NewHTTPProxy(80) // Default proxy port
+	httpProxy := route.NewHTTPProxy(80, 8443) // Default HTTP and HTTPS ports
+	httpProxy.GetTLSCertificate = acmeProvider.GetTLSCertificate
+	httpProxy.IsTLSEnabled = func(domain string) bool {
+		d, err := domainRegistry.GetByName(domain)
+		if err == nil {
+			return d.TLS
+		}
+		return false
+	}
+	httpProxy.ACMEHandler = acmeProvider.HTTPHandler(nil)
 	go func() {
 		if err := httpProxy.Start(ctx); err != nil {
 			slog.Error("HTTP Proxy failed", "error", err)
@@ -182,6 +192,7 @@ func runControlPlane(args []string) {
 	domainHandler := &api.DomainHandler{
 		DomainRegistry: domainRegistry,
 		AppRegistry:    appRegistry,
+		CertProvider:   acmeProvider,
 	}
 	ingressHandler := &api.IngressHandler{
 		IngressRegistry: ingressRegistry,
@@ -198,6 +209,8 @@ func runControlPlane(args []string) {
 	mux.HandleFunc("POST /api/v1/domains", auth.RequireOperator(domainHandler.Create))
 	mux.HandleFunc("GET /api/v1/domains", auth.RequireOperator(domainHandler.List))
 	mux.HandleFunc("DELETE /api/v1/domains/{id}", auth.RequireOperator(domainHandler.Delete))
+	mux.HandleFunc("POST /api/v1/domains/{domain}/tls", auth.RequireOperator(domainHandler.EnableTLS))
+	mux.HandleFunc("GET /api/v1/domains/{domain}/tls", auth.RequireOperator(domainHandler.TLSStatus))
 
 	mux.HandleFunc("POST /api/v1/ingresses", auth.RequireOperator(ingressHandler.Create))
 	mux.HandleFunc("GET /api/v1/ingresses", auth.RequireOperator(ingressHandler.List))

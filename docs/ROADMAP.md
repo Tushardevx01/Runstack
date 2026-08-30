@@ -78,3 +78,11 @@
 - Static Bearer Token CP API security.
 - Disjoint OPERATOR and AGENT roles.
 - Remote CP Support via `~/.runstack/config` contexts.
+
+
+### Milestone 8L: Automatic TLS & HTTPS Ingress (COMPLETED)
+- Automatic Let's Encrypt / ACME HTTP-01 certificate provision.
+- TLS SNI handshake validation and connection rejection for unknown domains.
+- In-memory certificate cache mapped directly to Autocert.
+- Automatic HTTP -> HTTPS redirection.
+- Control Plane restart volatility inherently acknowledged and guarded with bounded issuance.
