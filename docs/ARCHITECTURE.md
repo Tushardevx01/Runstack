@@ -165,3 +165,7 @@ To expose standard HTTPS to the public internet, the deployment environment (e.g
 
 **Restart Volatility:**
 Certificates are held in RAM. Upon a Control Plane restart, certificates are lost. `autocert` will seamlessly re-request them when the first HTTPS SNI handshake arrives. Users must be aware of Let's Encrypt rate limits (e.g., 50 certificates per domain per week) if restarting the Control Plane excessively.
+
+
+## Declarative Manifests (Milestone 8M Design)
+RunStack V1 relies on the developer's Git repository (`runstack.yaml`) as the durable source of truth. The Control Plane holds only ephemeral observed state in memory. Re-applying the manifest reconstructs the entire application topology.

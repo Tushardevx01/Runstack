@@ -454,6 +454,10 @@ func runCLI(args []string) {
 		fmt.Println("Usage: runstack <command>")
 		fmt.Println()
 		fmt.Println("Commands:")
+		fmt.Println("  deploy    Deploy an application manually")
+		fmt.Println("  apply     Apply a declarative manifest")
+		fmt.Println("  diff      Compare a manifest to Control Plane state")
+		fmt.Println("  validate  Validate a manifest locally")
 		fmt.Println("  cp        Start Control Plane")
 		fmt.Println("  agent     Start Agent")
 		fmt.Println("  status    Show control plane status")
@@ -471,6 +475,21 @@ func runCLI(args []string) {
 
 	command := args[0]
 	switch command {
+	case "apply":
+		if err := applyCommand(args[1:]); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
+	case "diff":
+		if err := diffCommand(args[1:]); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
+	case "validate":
+		if err := validateCommand(args[1:]); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
 	case "deploy":
 		if err := runDeploy(args[1:]); err != nil {
 			fmt.Println("Error:", err)

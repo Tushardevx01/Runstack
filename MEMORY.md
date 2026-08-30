@@ -174,3 +174,9 @@ Introduced `Service` domain, local `PortAllocator`, and `RoutingReconciler` to g
 - In-memory certificate cache mapped directly to Autocert.
 - Automatic HTTP -> HTTPS redirection.
 - Control Plane restart volatility inherently acknowledged and guarded with bounded issuance.
+
+
+### Milestone 8M: Declarative Manifests & Idempotent Apply (DESIGN PHASE)
+- See `docs/MILESTONE_8M_DESIGN.md` for the authoritative design.
+- Introduces `runstack.yaml` as the durable source of desired state.
+- Retains the V1 "No Database" constraint while solving Control Plane restart volatility.

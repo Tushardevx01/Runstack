@@ -132,3 +132,9 @@ Check the certificate status.
 
 `DELETE /api/v1/domains/{domain}/tls`
 Disable TLS.
+
+
+## Apply
+
+`POST /api/v1/apply`
+Submit a parsed `runstack.yaml` manifest to the Control Plane for idempotent reconciliation.

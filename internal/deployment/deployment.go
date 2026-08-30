@@ -31,6 +31,7 @@ type Deployment struct {
 	ApplicationID       string              `json:"application_id"`
 	Version             int                 `json:"version"`
 	SpecSnapshot        application.AppSpec `json:"spec_snapshot"`
+	Hash                string              `json:"hash"`
 	Status              DeploymentStatus    `json:"status"` // Overall status (ACTIVE/SUPERSEDED)
 	RolloutStatus       RolloutStatus       `json:"rollout_status"`
 	DesiredReplicas     int                 `json:"desired_replicas"`

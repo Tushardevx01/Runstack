@@ -2,7 +2,9 @@ package deployment
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -47,11 +49,17 @@ func (r *Registry) Create(appID string, spec application.AppSpec) (Deployment, e
 	dummy := application.Application{Spec: spec}
 	copiedSpec := dummy.DeepCopy().Spec
 
+	// Hash computation
+	b, _ := json.Marshal(copiedSpec)
+	h := sha256.Sum256(b)
+	hashStr := hex.EncodeToString(h[:])
+
 	dep := Deployment{
 		ID:            generateID(),
 		ApplicationID: appID,
 		Version:       version,
 		SpecSnapshot:  copiedSpec,
+		Hash:          hashStr,
 		Status:        StatusActive,
 		RolloutStatus: RolloutPending,
 		CreatedAt:     time.Now().UTC(),

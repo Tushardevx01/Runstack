@@ -167,3 +167,17 @@ func (r *DomainRegistry) EnableTLS(id string) error {
 	r.domains[id] = d
 	return nil
 }
+
+func (r *DomainRegistry) UpdateTLS(id string, tls bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	d, exists := r.domains[id]
+	if !exists {
+		return ErrDomainNotFound
+	}
+
+	d.TLS = tls
+	r.domains[id] = d
+	return nil
+}

@@ -206,6 +206,19 @@ func runControlPlane(args []string) {
 	mux.HandleFunc("PUT /api/v1/services/{id}", auth.RequireOperator(routeHandler.Update))
 	mux.HandleFunc("DELETE /api/v1/services/{id}", auth.RequireOperator(routeHandler.Delete))
 
+	applyHandler := &api.ApplyHandler{
+		AppRegistry:     appRegistry,
+		DepRegistry:     depRegistry,
+		SecretRegistry:  secretRegistry,
+		DomainRegistry:  domainRegistry,
+		IngressRegistry: ingressRegistry,
+		ServiceRegistry: routeRegistry,
+		CertProvider:    acmeProvider,
+	}
+
+	mux.HandleFunc("POST /api/v1/apply", auth.RequireOperator(applyHandler.Apply))
+	mux.HandleFunc("POST /api/v1/diff", auth.RequireOperator(applyHandler.Diff))
+
 	mux.HandleFunc("POST /api/v1/domains", auth.RequireOperator(domainHandler.Create))
 	mux.HandleFunc("GET /api/v1/domains", auth.RequireOperator(domainHandler.List))
 	mux.HandleFunc("DELETE /api/v1/domains/{id}", auth.RequireOperator(domainHandler.Delete))
