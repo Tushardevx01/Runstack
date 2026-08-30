@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 )
 
@@ -19,12 +18,12 @@ func runLogs(args []string) error {
 		instanceID = args[2]
 	}
 
-	url := fmt.Sprintf("http://localhost:8080/api/v1/apps/%s/logs", appID)
+	url := fmt.Sprintf("/api/v1/apps/%s/logs", appID)
 	if instanceID != "" {
 		url += "?instance=" + instanceID
 	}
 
-	resp, err := http.Get(url)
+	resp, err := getClient().Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to fetch logs: %w", err)
 	}

@@ -2,6 +2,15 @@
 
 All endpoints are hosted by the Control Plane, which defaults to `http://localhost:8080`.
 
+## Authentication (Milestone 8K - Designing)
+
+All API endpoints (except public ingress routing if exposed) require Authentication via the `Authorization: Bearer <token>` HTTP header.
+The Control Plane uses static, disjoint tokens injected at startup:
+- **USER/OPERATOR Token**: Required for all user-facing APIs (`/api/v1/apps`, `/api/v1/jobs`, `/api/v1/secrets`, etc.).
+- **AGENT Token**: Required for all node-facing APIs (`/api/v1/nodes/register`, `/api/v1/instances/*/status`, etc.).
+
+Requests without a valid token receive `401 Unauthorized`. Requests with a valid token attempting to access the wrong role's endpoints receive `403 Forbidden`.
+
 ## Health & Status
 
 - **`GET /health`**
@@ -101,7 +110,7 @@ All endpoints are hosted by the Control Plane, which defaults to `http://localho
 - **`DELETE /api/v1/ingresses/{id}`**
   Delete an Ingress mapping.
 
-## Secrets (Milestone 8H - Upcoming)
+## Secrets
 
 - **`POST /api/v1/secrets`**
   Create a new secret (metadata returned, plaintext value safely consumed but not returned).

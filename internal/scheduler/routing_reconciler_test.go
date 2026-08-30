@@ -39,7 +39,7 @@ func TestRoutingReconciler_Reconcile(t *testing.T) {
 	appB, _ := appReg.Create("app-b", application.AppSpec{})
 
 	n := node.Node{ID: "node1", IPAddress: "192.168.1.100"}
-	nodeReg.Register(n)
+	nodeReg.Register(n, "")
 
 	// App A Instance
 	instA, _ := instReg.Create(appA.ID, "depA")

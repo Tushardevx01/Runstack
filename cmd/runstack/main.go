@@ -16,10 +16,14 @@ func main() {
 
 	command := os.Args[1]
 	switch command {
+	case "context":
+		runContext(os.Args[2:])
+	case "auth":
+		runAuth(os.Args[2:])
 	case "cp", "control-plane":
-		runControlPlane()
+		runControlPlane(os.Args[2:])
 	case "agent":
-		runAgent()
+		runAgent(os.Args[2:])
 	default:
 		runCLI(os.Args[1:])
 	}

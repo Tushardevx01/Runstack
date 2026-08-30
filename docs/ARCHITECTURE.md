@@ -37,6 +37,14 @@ RunStack is a lightweight, distributed job execution platform built in Go. Its a
               └──────────────────┘
 ```
 
+
+### Authentication and Authorization (Milestone 8K - Designing)
+The Control Plane is protected by a strict static Bearer token model to prevent unauthorized remote execution.
+- **Roles:** The API is divided into two disjoint scopes: `USER/OPERATOR` (application management, routing, secrets) and `AGENT` (node registration, instance/job execution claims).
+- **Middleware:** A centralized authentication middleware intercepts HTTP requests, extracts the `Authorization: Bearer <token>` header, and compares it against in-memory tokens provided to the Control Plane at startup.
+- **Enforcement:** Missing or invalid tokens yield `401 Unauthorized`. Cross-role usage yields `403 Forbidden`.
+- **Separation from Ownership:** Authentication verifies *identity*, but handlers independently verify *ownership* (e.g., verifying the Agent's NodeID matches the requested Instance's AssignedNodeID, or that an Operator's Secret belongs to the correct Application).
+
 ## Package Responsibilities
 
 The codebase is organized into cleanly separated domains to prevent architectural drift:

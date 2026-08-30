@@ -155,7 +155,7 @@ func runDeploy(args []string) error {
 	}
 	pb, _ := json.Marshal(payload)
 
-	url := fmt.Sprintf("http://localhost:8080/api/v1/apps/%s/deploy", config.Name)
+	url := fmt.Sprintf("/api/v1/apps/%s/deploy", config.Name)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(pb))
 	req.Header.Set("Content-Type", "application/json")
 

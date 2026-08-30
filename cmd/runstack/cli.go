@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/Tushardevx01/runstack/internal/client"
+
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -26,7 +28,7 @@ type ListNodesResponse struct {
 }
 
 func getStatus() error {
-	resp, err := http.Get("http://localhost:8080/api/v1/status")
+	resp, err := getClient().Get("/api/v1/status")
 	if err != nil {
 		return fmt.Errorf("failed to connect to control plane: %w", err)
 	}
@@ -64,7 +66,7 @@ func formatBytes(b uint64) string {
 }
 
 func getNodes() error {
-	resp, err := http.Get("http://localhost:8080/api/v1/nodes")
+	resp, err := getClient().Get("/api/v1/nodes")
 	if err != nil {
 		return fmt.Errorf("failed to connect to control plane: %w", err)
 	}
@@ -113,7 +115,7 @@ func getNodes() error {
 }
 
 func getNode(id string) error {
-	resp, err := http.Get("http://localhost:8080/api/v1/nodes/" + id)
+	resp, err := getClient().Get("/api/v1/nodes/" + id)
 	if err != nil {
 		return fmt.Errorf("failed to connect to control plane: %w", err)
 	}
@@ -169,7 +171,7 @@ func getJobs(args []string) error {
 		}
 	}
 
-	urlStr := "http://localhost:8080/api/v1/jobs"
+	urlStr := "/api/v1/jobs"
 	query := ""
 	if statusFilter != "" {
 		query += "status=" + statusFilter
@@ -222,7 +224,7 @@ func getJobs(args []string) error {
 }
 
 func getJob(id string) error {
-	resp, err := http.Get("http://localhost:8080/api/v1/jobs/" + id)
+	resp, err := getClient().Get("/api/v1/jobs/" + id)
 	if err != nil {
 		return fmt.Errorf("failed to connect to control plane: %w", err)
 	}
@@ -293,7 +295,7 @@ type JobHistoryResponse struct {
 }
 
 func getJobHistory(id string) error {
-	resp, err := http.Get(fmt.Sprintf("http://localhost:8080/api/v1/jobs/%s/events", id))
+	resp, err := getClient().Get(fmt.Sprintf("/api/v1/jobs/%s/events", id))
 	if err != nil {
 		return fmt.Errorf("failed to connect to control plane: %w", err)
 	}
@@ -335,7 +337,7 @@ func runDoctor() {
 	healthy := true
 
 	// Control Plane
-	resp, err := http.Get("http://localhost:8080/health")
+	resp, err := getClient().Get("/health")
 	cpReachable := err == nil && resp.StatusCode == http.StatusOK
 	if resp != nil {
 		resp.Body.Close()
@@ -349,7 +351,7 @@ func runDoctor() {
 	}
 
 	// API
-	statusResp, err := http.Get("http://localhost:8080/api/v1/status")
+	statusResp, err := getClient().Get("/api/v1/status")
 	apiHealthy := err == nil && statusResp.StatusCode == http.StatusOK
 	if statusResp != nil {
 		statusResp.Body.Close()
@@ -363,7 +365,7 @@ func runDoctor() {
 	}
 
 	// Node Registry
-	nodesResp, err := http.Get("http://localhost:8080/api/v1/nodes")
+	nodesResp, err := getClient().Get("/api/v1/nodes")
 	nodeReg := err == nil && nodesResp.StatusCode == http.StatusOK
 	var nodes []node.Node
 	if nodeReg {
@@ -384,7 +386,7 @@ func runDoctor() {
 	}
 
 	// Job Registry
-	jobsResp, err := http.Get("http://localhost:8080/api/v1/jobs")
+	jobsResp, err := getClient().Get("/api/v1/jobs")
 	jobReg := err == nil && jobsResp.StatusCode == http.StatusOK
 	if jobsResp != nil {
 		jobsResp.Body.Close()
@@ -583,7 +585,7 @@ func createJob(args []string) error {
 		"maxRetries": maxRetries,
 	})
 
-	resp, err := http.Post("http://localhost:8080/api/v1/jobs", "application/json", bytes.NewBuffer(payload))
+	resp, err := getClient().Post("/api/v1/jobs", "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Errorf("failed to connect to Control Plane: %w", err)
 	}
@@ -600,4 +602,13 @@ func createJob(args []string) error {
 
 	fmt.Printf("Job created successfully: %s\n", j.ID)
 	return nil
+}
+
+func getClient() *client.Client {
+	c, err := client.NewFromConfig()
+	if err != nil {
+		fmt.Printf("Error: %v\nRun 'runstack context ...' to configure one.\n", err)
+		os.Exit(1)
+	}
+	return c
 }

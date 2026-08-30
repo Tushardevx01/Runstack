@@ -27,7 +27,7 @@ func setupReconciler() (*InstanceReconciler, *application.Registry, *deployment.
 	inst, _ := instReg.Create(app.ID, dep.ID)
 	instReg.UpdateState(inst.ID, instance.StatusRunning, "node-1", "cid")
 
-	nodeReg.Register(node.Node{ID: "node-1"})
+	nodeReg.Register(node.Node{ID: "node-1"}, "")
 	nodeReg.Heartbeat("node-1", nil)
 
 	return r, appReg, depReg, instReg, nodeReg, inst

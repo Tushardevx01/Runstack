@@ -63,8 +63,18 @@
 - Idempotent deploy behavior accounting for secret rotation.
 - Missing secrets result in deterministic `CRASHED` state.
 
-### Milestone 8I: Application Health Probes & Readiness (DESIGN PHASE)
+### Milestone 8I: Application Health Probes & Readiness (COMPLETED)
 - Explicit Readiness and Liveness probe models.
 - Support HTTP/TCP probes via local host-port loopback.
 - Gated routing and rollouts based on Readiness.
 - Liveness failures increment existing crash-loop breaker.
+
+### Milestone 8J: Resource Limits & Capacity Scheduling (COMPLETED)
+- CPU and Memory capacity requirements.
+- Strictly mathematically tracking assigned instance and job limits.
+- Blocked deployments ("insufficient_capacity").
+
+### Milestone 8K: Authentication & Remote CLI Contexts (DESIGN PHASE)
+- Static Bearer Token CP API security.
+- Disjoint OPERATOR and AGENT roles.
+- Remote CP Support via `~/.runstack/config` contexts.

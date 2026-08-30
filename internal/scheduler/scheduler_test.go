@@ -17,7 +17,7 @@ func TestScheduler_NoJobs(t *testing.T) {
 	jR := job.NewRegistry()
 	s := New(nR, jR, NewCapacityCalculator(application.NewRegistry(), deployment.NewRegistry(), instance.NewRegistry(), jR))
 
-	nR.Register(node.Node{ID: "node-1", Status: node.StatusOnline})
+	nR.Register(node.Node{ID: "node-1", Status: node.StatusOnline}, "")
 
 	if err := s.SchedulePendingJobs(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -51,11 +51,11 @@ func TestScheduler_PendingJob_NoOnlineNode(t *testing.T) {
 	s := New(nR, jR, NewCapacityCalculator(application.NewRegistry(), deployment.NewRegistry(), instance.NewRegistry(), jR))
 
 	j := jR.Create("test", "echo 1", 0, 0, 0)
-	nR.Register(node.Node{ID: "node-1", Status: node.StatusOffline})
+	nR.Register(node.Node{ID: "node-1", Status: node.StatusOffline}, "")
 
 	// Override last heartbeat to ensure it's marked offline in our tests if needed
 	// Actually we can just wait or set it directly. Wait, Register sets it to online.
-	// Oh, Register() forces Status = StatusOnline. Let's use MarkOfflineNodes to force it.
+	// Oh, Register(, "") forces Status = StatusOnline. Let's use MarkOfflineNodes to force it.
 	nR.MarkOfflineNodes(-1 * time.Second) // Forces all to offline
 
 	if err := s.SchedulePendingJobs(); err != nil {
@@ -74,7 +74,7 @@ func TestScheduler_PendingJob_OneOnlineNode(t *testing.T) {
 	s := New(nR, jR, NewCapacityCalculator(application.NewRegistry(), deployment.NewRegistry(), instance.NewRegistry(), jR))
 
 	j := jR.Create("test", "echo 1", 0, 0, 0)
-	nR.Register(node.Node{ID: "node-1"})
+	nR.Register(node.Node{ID: "node-1"}, "")
 
 	if err := s.SchedulePendingJobs(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -97,9 +97,9 @@ func TestScheduler_DeterministicSelection(t *testing.T) {
 	jR := job.NewRegistry()
 	s := New(nR, jR, NewCapacityCalculator(application.NewRegistry(), deployment.NewRegistry(), instance.NewRegistry(), jR))
 
-	nR.Register(node.Node{ID: "node-C"})
-	nR.Register(node.Node{ID: "node-A"})
-	nR.Register(node.Node{ID: "node-B"})
+	nR.Register(node.Node{ID: "node-C"}, "")
+	nR.Register(node.Node{ID: "node-A"}, "")
+	nR.Register(node.Node{ID: "node-B"}, "")
 
 	j1 := jR.Create("test-1", "echo 1", 0, 0, 0)
 	j2 := jR.Create("test-2", "echo 2", 0, 0, 0)
@@ -123,7 +123,7 @@ func TestScheduler_IgnoreAssignedJobs(t *testing.T) {
 	jR := job.NewRegistry()
 	s := New(nR, jR, NewCapacityCalculator(application.NewRegistry(), deployment.NewRegistry(), instance.NewRegistry(), jR))
 
-	nR.Register(node.Node{ID: "node-A"})
+	nR.Register(node.Node{ID: "node-A"}, "")
 
 	j := jR.Create("test", "echo 1", 0, 0, 0)
 
@@ -147,7 +147,7 @@ func TestScheduler_Concurrent(t *testing.T) {
 	jR := job.NewRegistry()
 	s := New(nR, jR, NewCapacityCalculator(application.NewRegistry(), deployment.NewRegistry(), instance.NewRegistry(), jR))
 
-	nR.Register(node.Node{ID: "node-A"})
+	nR.Register(node.Node{ID: "node-A"}, "")
 
 	// Create 100 jobs
 	for i := 0; i < 100; i++ {
@@ -180,7 +180,7 @@ func TestScheduler_StaleRecovery(t *testing.T) {
 	s := New(nodeReg, jobReg, NewCapacityCalculator(application.NewRegistry(), deployment.NewRegistry(), instance.NewRegistry(), jobReg))
 	s.ExecutionTimeout = 100 * time.Millisecond
 
-	nodeReg.Register(node.Node{ID: "node-1"})
+	nodeReg.Register(node.Node{ID: "node-1"}, "")
 
 	j1 := jobReg.Create("stale-job", "echo stale", 0, 0, 0)
 

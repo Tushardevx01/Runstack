@@ -24,8 +24,8 @@ func TestEndToEndReconciliation(t *testing.T) {
 	instScheduler := scheduler.NewInstanceScheduler(nodeReg, instReg, scheduler.NewCapacityCalculator(appReg, depReg, instReg, &job.Registry{}))
 
 	// Register 2 nodes
-	nodeReg.Register(node.Node{ID: "node-1", Status: node.StatusOnline})
-	nodeReg.Register(node.Node{ID: "node-2", Status: node.StatusOnline})
+	nodeReg.Register(node.Node{ID: "node-1", Status: node.StatusOnline}, "")
+	nodeReg.Register(node.Node{ID: "node-2", Status: node.StatusOnline}, "")
 
 	// 1. Create Application with replicas=2
 	spec1 := application.AppSpec{Replicas: 2}

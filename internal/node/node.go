@@ -25,4 +25,5 @@ type Node struct {
 	LastHeartbeat time.Time    `json:"lastHeartbeat"`
 	OfflineSince  *time.Time   `json:"offlineSince,omitempty"`
 	Capabilities  Capabilities `json:"capabilities"`
+	Token         string       `json:"-"`
 }

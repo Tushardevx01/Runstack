@@ -13,9 +13,9 @@ func TestInstanceScheduler_DeterministicRoundRobin(t *testing.T) {
 	nodeReg := node.NewRegistry()
 	instReg := instance.NewRegistry()
 
-	nodeReg.Register(node.Node{ID: "node-C"})
-	nodeReg.Register(node.Node{ID: "node-A"})
-	nodeReg.Register(node.Node{ID: "node-B"})
+	nodeReg.Register(node.Node{ID: "node-C"}, "")
+	nodeReg.Register(node.Node{ID: "node-A"}, "")
+	nodeReg.Register(node.Node{ID: "node-B"}, "")
 
 	depReg := deployment.NewRegistry()
 	dep, _ := depReg.Create("app1", application.AppSpec{})

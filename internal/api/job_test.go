@@ -75,7 +75,7 @@ func TestJobHandler_Claim(t *testing.T) {
 	jobRegistry := job.NewRegistry()
 	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
 
-	nodeRegistry.Register(node.Node{ID: "node-1"})
+	nodeRegistry.Register(node.Node{ID: "node-1"}, "")
 	j := jobRegistry.Create("test-claim", "echo 1", 0, 0, 0)
 
 	// Set job to ASSIGNED manually
@@ -105,7 +105,7 @@ func TestJobHandler_ReportResult(t *testing.T) {
 	jobRegistry := job.NewRegistry()
 	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
 
-	nodeRegistry.Register(node.Node{ID: "node-1"})
+	nodeRegistry.Register(node.Node{ID: "node-1"}, "")
 	j := jobRegistry.Create("test-result", "echo 1", 1, 0, 0)
 
 	status := job.StatusAssigned
@@ -179,7 +179,7 @@ func TestJobHandler_ReportResult_EmptyNodeID(t *testing.T) {
 	jobRegistry := job.NewRegistry()
 	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
 
-	nodeRegistry.Register(node.Node{ID: "node-1"})
+	nodeRegistry.Register(node.Node{ID: "node-1"}, "")
 	j := jobRegistry.Create("test", "echo 1", 0, 0, 0)
 
 	status := job.StatusAssigned
@@ -205,7 +205,7 @@ func TestJobHandler_ReportResult_EmptyExecutionID(t *testing.T) {
 	jobRegistry := job.NewRegistry()
 	handler := &JobHandler{Registry: jobRegistry, NodeRegistry: nodeRegistry}
 
-	nodeRegistry.Register(node.Node{ID: "node-1"})
+	nodeRegistry.Register(node.Node{ID: "node-1"}, "")
 	j := jobRegistry.Create("test", "echo 1", 0, 0, 0)
 
 	status := job.StatusAssigned

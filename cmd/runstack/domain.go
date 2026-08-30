@@ -36,7 +36,7 @@ func runDomain(args []string) error {
 			"tls":            false,
 		})
 
-		resp, err := http.Post("http://localhost:8080/api/v1/domains", "application/json", bytes.NewBuffer(payload))
+		resp, err := getClient().Post("/api/v1/domains", "application/json", bytes.NewBuffer(payload))
 		if err != nil {
 			return fmt.Errorf("failed to connect to Control Plane: %w", err)
 		}
@@ -55,12 +55,12 @@ func runDomain(args []string) error {
 		fmt.Printf("Domain %s added successfully to application %s\n", domain, appID)
 
 	case "ls":
-		url := "http://localhost:8080/api/v1/domains"
+		url := "/api/v1/domains"
 		if len(args) == 2 {
-			url = fmt.Sprintf("http://localhost:8080/api/v1/domains?application_id=%s", args[1])
+			url = fmt.Sprintf("/api/v1/domains?application_id=%s", args[1])
 		}
 
-		resp, err := http.Get(url)
+		resp, err := getClient().Get(url)
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
@@ -83,8 +83,8 @@ func runDomain(args []string) error {
 			return fmt.Errorf("usage: runstack domain rm <domain-id>")
 		}
 
-		req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://localhost:8080/api/v1/domains/%s", args[1]), nil)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := getClient().Delete(fmt.Sprintf("/api/v1/domains/%s", args[1]))
+
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}

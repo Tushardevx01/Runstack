@@ -22,7 +22,7 @@ func TestIntegration_NodeAwareRecovery(t *testing.T) {
 
 	// 1. Start Control Plane (simulate)
 	// 2. Start Agent A (simulate registration)
-	n := nodeReg.Register(node.Node{ID: "agent-a"})
+	n := nodeReg.Register(node.Node{ID: "agent-a"}, "")
 
 	// 3. Create a job
 	j := jobReg.Create("job-123", "echo hello", 1, 0, 0)
@@ -81,7 +81,7 @@ func TestIntegration_NodeAwareRecovery(t *testing.T) {
 	}
 
 	// 11. Restart Agent A or bring up Agent B
-	nodeReg.Register(node.Node{ID: "agent-b"})
+	nodeReg.Register(node.Node{ID: "agent-b"}, "")
 
 	// 12. Verify job can be reassigned to Agent B
 	sched.SchedulePendingJobs()
@@ -114,8 +114,8 @@ func TestIntegration_ExecutionFencing_And_Retry(t *testing.T) {
 	sched := scheduler.New(nodeReg, jobReg, scheduler.NewCapacityCalculator(application.NewRegistry(), deployment.NewRegistry(), instance.NewRegistry(), jobReg))
 
 	// Register Agent A and Agent B
-	nodeReg.Register(node.Node{ID: "agent-a"})
-	nodeReg.Register(node.Node{ID: "agent-b"})
+	nodeReg.Register(node.Node{ID: "agent-a"}, "")
+	nodeReg.Register(node.Node{ID: "agent-b"}, "")
 
 	// Create job with MaxRetries = 1
 	j := jobReg.Create("job-retry", "exit 1", 1, 0, 0)

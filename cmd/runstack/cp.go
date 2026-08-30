@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -49,7 +51,14 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func runControlPlane() {
+func runControlPlane(args []string) {
+	fs := flag.NewFlagSet("cp", flag.ExitOnError)
+	operatorToken := fs.String("operator-token", os.Getenv("RUNSTACK_OPERATOR_TOKEN"), "Operator Bearer token")
+	agentToken := fs.String("agent-token", os.Getenv("RUNSTACK_AGENT_TOKEN"), "Agent Bearer token")
+	_ = fs.Parse(args)
+
+	auth := api.NewAuthManager(*operatorToken, *agentToken)
+
 	registry := node.NewRegistry()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -141,34 +150,34 @@ func runControlPlane() {
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /api/v1/status", statusHandler)
 
-	mux.HandleFunc("POST /api/v1/nodes/register", nodeHandler.Register)
-	mux.HandleFunc("GET /api/v1/nodes", nodeHandler.ListNodes)
-	mux.HandleFunc("GET /api/v1/nodes/{id}", nodeHandler.GetNode)
-	mux.HandleFunc("POST /api/v1/nodes/{id}/heartbeat", nodeHandler.Heartbeat)
+	mux.HandleFunc("POST /api/v1/nodes/register", auth.RequireAgent(nodeHandler.Register))
+	mux.HandleFunc("GET /api/v1/nodes", auth.RequireOperator(nodeHandler.ListNodes))
+	mux.HandleFunc("GET /api/v1/nodes/{id}", auth.RequireOperator(nodeHandler.GetNode))
+	mux.HandleFunc("POST /api/v1/nodes/{id}/heartbeat", auth.RequireNodeAuth(registry, nodeHandler.Heartbeat))
 
-	mux.HandleFunc("POST /api/v1/jobs", jobHandler.Create)
-	mux.HandleFunc("GET /api/v1/jobs", jobHandler.List)
-	mux.HandleFunc("GET /api/v1/jobs/{id}", jobHandler.Get)
-	mux.HandleFunc("GET /api/v1/jobs/{id}/events", jobHandler.GetEvents)
-	mux.HandleFunc("PATCH /api/v1/jobs/{id}", jobHandler.Update)
-	mux.HandleFunc("POST /api/v1/jobs/{id}/claim", jobHandler.Claim)
-	mux.HandleFunc("POST /api/v1/jobs/{id}/result", jobHandler.ReportResult)
+	mux.HandleFunc("POST /api/v1/jobs", auth.RequireOperator(jobHandler.Create))
+	mux.HandleFunc("GET /api/v1/jobs", auth.RequireOperator(jobHandler.List))
+	mux.HandleFunc("GET /api/v1/jobs/{id}", auth.RequireOperator(jobHandler.Get))
+	mux.HandleFunc("GET /api/v1/jobs/{id}/events", auth.RequireOperator(jobHandler.GetEvents))
+	mux.HandleFunc("PATCH /api/v1/jobs/{id}", auth.RequireOperator(jobHandler.Update))
+	mux.HandleFunc("POST /api/v1/jobs/{id}/claim", auth.RequireNodeAuth(registry, jobHandler.Claim))
+	mux.HandleFunc("POST /api/v1/jobs/{id}/result", auth.RequireNodeAuth(registry, jobHandler.ReportResult))
 
-	mux.HandleFunc("POST /api/v1/apps", appHandler.Create)
-	mux.HandleFunc("GET /api/v1/apps", appHandler.List)
-	mux.HandleFunc("GET /api/v1/apps/{id}", appHandler.Get)
-	mux.HandleFunc("GET /api/v1/apps/{id}/logs", logsHandler.GetAppLogs)
-	mux.HandleFunc("PUT /api/v1/apps/{id}", appHandler.Update)
-	mux.HandleFunc("POST /api/v1/apps/{id}/deploy", appHandler.Deploy)
-	mux.HandleFunc("POST /api/v1/apps/{id}/rollback", appHandler.Rollback)
+	mux.HandleFunc("POST /api/v1/apps", auth.RequireOperator(appHandler.Create))
+	mux.HandleFunc("GET /api/v1/apps", auth.RequireOperator(appHandler.List))
+	mux.HandleFunc("GET /api/v1/apps/{id}", auth.RequireOperator(appHandler.Get))
+	mux.HandleFunc("GET /api/v1/apps/{id}/logs", auth.RequireOperator(logsHandler.GetAppLogs))
+	mux.HandleFunc("PUT /api/v1/apps/{id}", auth.RequireOperator(appHandler.Update))
+	mux.HandleFunc("POST /api/v1/apps/{id}/deploy", auth.RequireOperator(appHandler.Deploy))
+	mux.HandleFunc("POST /api/v1/apps/{id}/rollback", auth.RequireOperator(appHandler.Rollback))
 
 	secretHandler := &api.SecretHandler{
 		Registry: secretRegistry,
 		AppReg:   appRegistry,
 	}
-	mux.HandleFunc("POST /api/v1/secrets", secretHandler.Set)
-	mux.HandleFunc("GET /api/v1/secrets", secretHandler.List)
-	mux.HandleFunc("DELETE /api/v1/secrets/{id}", secretHandler.Delete)
+	mux.HandleFunc("POST /api/v1/secrets", auth.RequireOperator(secretHandler.Set))
+	mux.HandleFunc("GET /api/v1/secrets", auth.RequireOperator(secretHandler.List))
+	mux.HandleFunc("DELETE /api/v1/secrets/{id}", auth.RequireOperator(secretHandler.Delete))
 
 	domainHandler := &api.DomainHandler{
 		DomainRegistry: domainRegistry,
@@ -180,28 +189,28 @@ func runControlPlane() {
 		ServiceRegistry: routeRegistry,
 	}
 
-	mux.HandleFunc("POST /api/v1/services", routeHandler.Create)
-	mux.HandleFunc("GET /api/v1/services", routeHandler.List)
-	mux.HandleFunc("GET /api/v1/services/{id}", routeHandler.Get)
-	mux.HandleFunc("PUT /api/v1/services/{id}", routeHandler.Update)
-	mux.HandleFunc("DELETE /api/v1/services/{id}", routeHandler.Delete)
+	mux.HandleFunc("POST /api/v1/services", auth.RequireOperator(routeHandler.Create))
+	mux.HandleFunc("GET /api/v1/services", auth.RequireOperator(routeHandler.List))
+	mux.HandleFunc("GET /api/v1/services/{id}", auth.RequireOperator(routeHandler.Get))
+	mux.HandleFunc("PUT /api/v1/services/{id}", auth.RequireOperator(routeHandler.Update))
+	mux.HandleFunc("DELETE /api/v1/services/{id}", auth.RequireOperator(routeHandler.Delete))
 
-	mux.HandleFunc("POST /api/v1/domains", domainHandler.Create)
-	mux.HandleFunc("GET /api/v1/domains", domainHandler.List)
-	mux.HandleFunc("DELETE /api/v1/domains/{id}", domainHandler.Delete)
+	mux.HandleFunc("POST /api/v1/domains", auth.RequireOperator(domainHandler.Create))
+	mux.HandleFunc("GET /api/v1/domains", auth.RequireOperator(domainHandler.List))
+	mux.HandleFunc("DELETE /api/v1/domains/{id}", auth.RequireOperator(domainHandler.Delete))
 
-	mux.HandleFunc("POST /api/v1/ingresses", ingressHandler.Create)
-	mux.HandleFunc("GET /api/v1/ingresses", ingressHandler.List)
-	mux.HandleFunc("DELETE /api/v1/ingresses/{id}", ingressHandler.Delete)
+	mux.HandleFunc("POST /api/v1/ingresses", auth.RequireOperator(ingressHandler.Create))
+	mux.HandleFunc("GET /api/v1/ingresses", auth.RequireOperator(ingressHandler.List))
+	mux.HandleFunc("DELETE /api/v1/ingresses/{id}", auth.RequireOperator(ingressHandler.Delete))
 
 	instanceHandler := &api.InstanceHandler{
 		InstanceRegistry:   instRegistry,
 		DeploymentRegistry: depRegistry,
 		SecretRegistry:     secretRegistry,
 	}
-	mux.HandleFunc("GET /api/v1/instances", instanceHandler.List)
-	mux.HandleFunc("POST /api/v1/instances/{id}/claim", instanceHandler.Claim)
-	mux.HandleFunc("POST /api/v1/instances/{id}/status", instanceHandler.ReportStatus)
+	mux.HandleFunc("GET /api/v1/instances", auth.RequireOperator(instanceHandler.List))
+	mux.HandleFunc("POST /api/v1/instances/{id}/claim", auth.RequireNodeAuth(registry, instanceHandler.Claim))
+	mux.HandleFunc("POST /api/v1/instances/{id}/status", auth.RequireNodeAuth(registry, instanceHandler.ReportStatus))
 
 	server := &http.Server{
 		Addr:              ":8080",

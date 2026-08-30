@@ -20,11 +20,16 @@ func NewRegistry() *Registry {
 	}
 }
 
-func (r *Registry) Register(n Node) *Node {
+func (r *Registry) Register(n Node, token string) *Node {
 	r.mu.Lock()
 
 	n.Status = StatusOnline
 	n.LastHeartbeat = time.Now()
+	if existing, ok := r.nodes[n.ID]; ok && token == "" {
+		n.Token = existing.Token
+	} else {
+		n.Token = token
+	}
 
 	nodePtr := &n
 	r.nodes[n.ID] = nodePtr
@@ -103,4 +108,15 @@ func (r *Registry) MarkOfflineNodes(timeout time.Duration) {
 	for _, id := range offlineNodes {
 		slog.Warn("Node went offline", "node_id", id)
 	}
+}
+
+func (r *Registry) GetByToken(token string) (Node, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, n := range r.nodes {
+		if n.Token == token && token != "" {
+			return *n, true
+		}
+	}
+	return Node{}, false
 }

@@ -178,6 +178,11 @@ func (h *JobHandler) Claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if ctxNodeID, ok := r.Context().Value("node_id").(string); ok && ctxNodeID != req.NodeID {
+		http.Error(w, "Forbidden: Identity mismatch", http.StatusForbidden)
+		return
+	}
+
 	n, err := h.NodeRegistry.Get(req.NodeID)
 	if err != nil || n.Status != node.StatusOnline {
 		http.Error(w, "node not online or not found", http.StatusForbidden)
@@ -203,6 +208,11 @@ func (h *JobHandler) ReportResult(w http.ResponseWriter, r *http.Request) {
 	var req ReportResultRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "malformed JSON", http.StatusBadRequest)
+		return
+	}
+
+	if ctxNodeID, ok := r.Context().Value("node_id").(string); ok && ctxNodeID != req.NodeID {
+		http.Error(w, "Forbidden: Identity mismatch", http.StatusForbidden)
 		return
 	}
 

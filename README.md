@@ -111,8 +111,8 @@ curl -X POST http://localhost:8080/api/v1/apps \
 - **In-Memory State**: Registries live entirely in memory. If the Control Plane restarts, historical data is lost.
 - **Command Parsing**: Agents run job commands via `strings.Fields`. Complex shell quotes (`echo "hello world"`) are not yet parsed natively to avoid arbitrary `/bin/sh` shell injection.
 - **Single Job Concurrency**: An Agent executes exactly one job at a time.
-- **No Distributed Scheduler**: No resource-aware or distributed load balancing.
-- **No Health Probes**: Containers are assumed healthy immediately upon starting.
+- **Single Control Plane**: Single-node control plane instance, no multi-node CP high-availability.
+- **No Persistent Volumes**: Strictly a stateless application runtime.
 
 ## Project Structure & Documentation
 

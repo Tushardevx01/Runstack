@@ -44,7 +44,7 @@ func runSecretSet(args []string) error {
 		"value":          value,
 	})
 
-	resp, err := http.Post("http://localhost:8080/api/v1/secrets", "application/json", bytes.NewBuffer(payload))
+	resp, err := getClient().Post("/api/v1/secrets", "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -65,7 +65,7 @@ func runSecretList(args []string) error {
 	}
 	appID := args[0]
 
-	resp, err := http.Get(fmt.Sprintf("http://localhost:8080/api/v1/secrets?application_id=%s", appID))
+	resp, err := getClient().Get(fmt.Sprintf("/api/v1/secrets?application_id=%s", appID))
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -96,8 +96,8 @@ func runSecretDelete(args []string) error {
 	}
 	id := args[0]
 
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://localhost:8080/api/v1/secrets/%s", id), nil)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := getClient().Delete(fmt.Sprintf("/api/v1/secrets/%s", id))
+
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}

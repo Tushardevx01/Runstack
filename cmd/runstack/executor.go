@@ -14,7 +14,7 @@ import (
 	"github.com/Tushardevx01/runstack/internal/job"
 )
 
-func startJobPolling(ctx context.Context, nodeID string) {
+func startJobPolling(ctx context.Context, nodeID, cpURL, agentToken string) {
 	slog.Info("Job polling started")
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
@@ -24,7 +24,7 @@ func startJobPolling(ctx context.Context, nodeID string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			jobs, err := fetchAssignedJobs(nodeID)
+			jobs, err := fetchAssignedJobs(nodeID, cpURL, agentToken)
 			if err != nil {
 				// Don't spam logs if CP is temporarily down
 				continue
@@ -37,7 +37,7 @@ func startJobPolling(ctx context.Context, nodeID string) {
 			// Process first job (v1 executes one at a time)
 			j := jobs[0]
 
-			execID, err := claimJob(j.ID, nodeID)
+			execID, err := claimJob(j.ID, nodeID, cpURL, agentToken)
 			if err != nil {
 				slog.Error("Failed to claim job", "job_id", j.ID, "error", err)
 				continue
@@ -46,13 +46,13 @@ func startJobPolling(ctx context.Context, nodeID string) {
 			slog.Info("job execution started", "job_id", j.ID, "execution_id", execID, "command", j.Command)
 			res := executeJob(ctx, j)
 
-			reportResultWithRetry(ctx, j.ID, nodeID, execID, res)
+			reportResultWithRetry(ctx, j.ID, nodeID, execID, cpURL, agentToken, res)
 		}
 	}
 }
 
-func fetchAssignedJobs(nodeID string) ([]job.Job, error) {
-	resp, err := http.Get(fmt.Sprintf("http://localhost:8080/api/v1/jobs?assignedNodeId=%s&status=assigned", nodeID))
+func fetchAssignedJobs(nodeID, cpURL, agentToken string) ([]job.Job, error) {
+	resp, err := agentDoReq("GET", fmt.Sprintf("%s/api/v1/jobs?assignedNodeId=%s&status=assigned", cpURL, nodeID), nil, agentToken)
 	if err != nil {
 		return nil, err
 	}
@@ -72,16 +72,12 @@ func fetchAssignedJobs(nodeID string) ([]job.Job, error) {
 	return parsed.Jobs, nil
 }
 
-func claimJob(jobID, nodeID string) (string, error) {
+func claimJob(jobID, nodeID, cpURL, agentToken string) (string, error) {
 	payload, _ := json.Marshal(map[string]string{
 		"nodeId": nodeID,
 	})
 
-	resp, err := http.Post(
-		fmt.Sprintf("http://localhost:8080/api/v1/jobs/%s/claim", jobID),
-		"application/json",
-		bytes.NewBuffer(payload),
-	)
+	resp, err := agentDoReq("POST", fmt.Sprintf("%s/api/v1/jobs/%s/claim", cpURL, jobID), payload, agentToken)
 	if err != nil {
 		return "", err
 	}
@@ -139,7 +135,7 @@ func executeJob(ctx context.Context, j job.Job) job.JobResult {
 	}
 }
 
-func reportResultWithRetry(ctx context.Context, jobID, nodeID, execID string, res job.JobResult) {
+func reportResultWithRetry(ctx context.Context, jobID, nodeID, execID, cpURL, agentToken string, res job.JobResult) {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"nodeId":      nodeID,
 		"executionId": execID,
@@ -147,11 +143,7 @@ func reportResultWithRetry(ctx context.Context, jobID, nodeID, execID string, re
 	})
 
 	for i := 0; i < 5; i++ {
-		resp, err := http.Post(
-			fmt.Sprintf("http://localhost:8080/api/v1/jobs/%s/result", jobID),
-			"application/json",
-			bytes.NewBuffer(payload),
-		)
+		resp, err := agentDoReq("POST", fmt.Sprintf("%s/api/v1/jobs/%s/result", cpURL, jobID), payload, agentToken)
 
 		if err == nil {
 			resp.Body.Close()

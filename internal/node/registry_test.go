@@ -10,7 +10,7 @@ func TestRegistry_Register(t *testing.T) {
 	r := NewRegistry()
 	n := Node{ID: "node-1", Hostname: "host-1", CPUCores: 2}
 
-	registered := r.Register(n)
+	registered := r.Register(n, "")
 	if registered.Status != StatusOnline {
 		t.Errorf("expected online, got %s", registered.Status)
 	}
@@ -27,10 +27,10 @@ func TestRegistry_Register(t *testing.T) {
 func TestRegistry_Update(t *testing.T) {
 	r := NewRegistry()
 	n := Node{ID: "node-1", Hostname: "host-1", CPUCores: 2}
-	r.Register(n)
+	r.Register(n, "")
 
 	n.Hostname = "host-2"
-	r.Register(n)
+	r.Register(n, "")
 
 	fetched, _ := r.Get("node-1")
 	if fetched.Hostname != "host-2" {
@@ -53,8 +53,8 @@ func TestRegistry_List(t *testing.T) {
 		t.Errorf("expected empty list, got %v", list)
 	}
 
-	r.Register(Node{ID: "node-1"})
-	r.Register(Node{ID: "node-2"})
+	r.Register(Node{ID: "node-1"}, "")
+	r.Register(Node{ID: "node-2"}, "")
 
 	list = r.List()
 	if len(list) != 2 {
@@ -64,7 +64,7 @@ func TestRegistry_List(t *testing.T) {
 
 func TestRegistry_Heartbeat(t *testing.T) {
 	r := NewRegistry()
-	r.Register(Node{ID: "node-1"})
+	r.Register(Node{ID: "node-1"}, "")
 
 	fetched1, _ := r.Get("node-1")
 
@@ -82,7 +82,7 @@ func TestRegistry_Heartbeat(t *testing.T) {
 
 func TestRegistry_MarkOfflineNodes(t *testing.T) {
 	r := NewRegistry()
-	r.Register(Node{ID: "node-1"})
+	r.Register(Node{ID: "node-1"}, "")
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -102,7 +102,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			r.Register(Node{ID: "node-1"})
+			r.Register(Node{ID: "node-1"}, "")
 			r.Get("node-1")
 			r.List()
 			r.Heartbeat("node-1", nil)
@@ -114,7 +114,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 
 func TestRegistry_OfflineSince(t *testing.T) {
 	r := NewRegistry()
-	n := r.Register(Node{ID: "node-1"})
+	n := r.Register(Node{ID: "node-1"}, "")
 
 	if n.OfflineSince != nil {
 		t.Fatalf("expected new node OfflineSince to be nil, got %v", n.OfflineSince)

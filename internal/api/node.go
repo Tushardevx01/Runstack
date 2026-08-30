@@ -1,6 +1,9 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+
 	"encoding/json"
 	"net"
 	"net/http"
@@ -25,6 +28,7 @@ type RegisterRequest struct {
 type RegisterResponse struct {
 	Status string     `json:"status"`
 	Node   *node.Node `json:"node"`
+	Token  string     `json:"token,omitempty"`
 }
 
 type ListNodesResponse struct {
@@ -61,12 +65,16 @@ func (h *NodeHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Capabilities: req.Capabilities,
 	}
 
-	registeredNode := h.Registry.Register(n)
+	bTok := make([]byte, 16)
+	rand.Read(bTok)
+	tok := hex.EncodeToString(bTok)
+	registeredNode := h.Registry.Register(n, tok)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(RegisterResponse{
 		Status: "registered",
 		Node:   registeredNode,
+		Token:  tok,
 	})
 }
 
@@ -96,6 +104,10 @@ type HeartbeatRequest struct {
 
 func (h *NodeHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if ctxNodeID, ok := r.Context().Value("node_id").(string); ok && ctxNodeID != id {
+		http.Error(w, "Forbidden: Identity mismatch", http.StatusForbidden)
+		return
+	}
 
 	var caps *node.Capabilities
 	if r.Body != nil && r.ContentLength > 0 {
