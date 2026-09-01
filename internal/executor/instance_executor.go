@@ -20,6 +20,7 @@ type InstanceExecutor struct {
 	APIClient   *api.Client
 	Runtime     runtime.ContainerRuntime
 	Ports       *node.PortAllocator
+	CrashLogs   *LogRingBuffer
 	ctx         context.Context
 	cancel      context.CancelFunc
 	proberMu    sync.Mutex
@@ -35,6 +36,7 @@ func NewInstanceExecutor(nodeID string, apiClient *api.Client, cr runtime.Contai
 		APIClient:   apiClient,
 		Runtime:     cr,
 		Ports:       node.NewPortAllocator(30000, 32767),
+		CrashLogs:   NewLogRingBuffer(cr),
 		ctx:         ctx,
 		cancel:      cancel,
 		probers:     make(map[string]context.CancelFunc),
@@ -237,6 +239,8 @@ func (e *InstanceExecutor) monitorActive() {
 				_ = e.Runtime.Remove(e.ctx, containerName)
 				targetStatus = instance.StatusStopped
 			} else {
+				// Capture crash evidence before removing or marking crashed
+				e.CrashLogs.CaptureAndFreeze(e.ctx, inst.ApplicationID, inst.DeploymentID, inst.ID, inst.ExecutionID, e.NodeID, containerName)
 				targetStatus = instance.StatusCrashed
 				e.stopProbers(inst.ID)
 			}

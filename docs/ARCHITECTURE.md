@@ -169,3 +169,4 @@ Certificates are held in RAM. Upon a Control Plane restart, certificates are los
 
 ## Declarative Manifests (Milestone 8M Design)
 RunStack V1 relies on the developer's Git repository (`runstack.yaml`) as the durable source of truth. The Control Plane holds only ephemeral observed state in memory. Re-applying the manifest reconstructs the entire application topology.
+- **8O**: Bounded crash-log retention buffers preserve recent crash evidence directly on the Agent.

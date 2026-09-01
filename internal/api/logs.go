@@ -16,6 +16,7 @@ type LogsHandler struct {
 	AppRegistry      *application.Registry
 	InstanceRegistry *instance.Registry
 	NodeRegistry     *node.Registry
+	AgentPort        int
 }
 
 func (h *LogsHandler) GetAppLogs(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +72,7 @@ func (h *LogsHandler) GetAppLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if targetInst.NodeID == "" || targetInst.ContainerID == "" {
+	if targetInst.NodeID == "" || (targetInst.ContainerID == "" && targetInst.Status != instance.StatusCrashed) {
 		http.Error(w, "instance is not fully scheduled/running yet", http.StatusPreconditionFailed)
 		return
 	}
@@ -93,8 +94,12 @@ func (h *LogsHandler) GetAppLogs(w http.ResponseWriter, r *http.Request) {
 		ip = "127.0.0.1"
 	}
 
+	port := h.AgentPort
+	if port == 0 {
+		port = 8081
+	}
 	// Dial Agent API
-	agentURL := fmt.Sprintf("http://%s:8081/api/v1/logs?container=%s", ip, targetInst.ContainerID)
+	agentURL := fmt.Sprintf("http://%s:%d/api/v1/logs?container=%s&instance_id=%s&app_id=%s&exec_id=%s", ip, port, targetInst.ContainerID, targetInst.ID, targetInst.ApplicationID, targetInst.ExecutionID)
 
 	client := http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(r.Context(), "GET", agentURL, nil)

@@ -173,7 +173,7 @@ func runAgent(args []string) {
 	instanceExec.Start()
 	defer instanceExec.Stop()
 
-	startAgentAPI(cr, 8081)
+	startAgentAPI(cr, instanceExec.CrashLogs, 8081)
 
 	startJobPolling(ctx, nodeID, *cpURL, nodeToken)
 }

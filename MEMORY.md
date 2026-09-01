@@ -180,3 +180,4 @@ Introduced `Service` domain, local `PortAllocator`, and `RoutingReconciler` to g
 - See `docs/MILESTONE_8M_DESIGN.md` for the authoritative design.
 - Introduces `runstack.yaml` as the durable source of desired state.
 - Retains the V1 "No Database" constraint while solving Control Plane restart volatility.
+* **8O**: Crash Log Retention & Incident Debugging.

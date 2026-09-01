@@ -42,7 +42,8 @@
 ## Future
 
 ### PaaS Features
-- [ ] Application Logs & Metrics
+- [x] Application Crash Log Retention
+- [ ] Application Historical Metrics (Deferred to V2)
 - [ ] Routing / Ingress (PaaS Dashboard)
 - [ ] Rollback & Zero-downtime Deployments
 

@@ -136,8 +136,12 @@ func runAppStatus(args []string) error {
 		fmt.Println("  (no instances)")
 	} else {
 		for _, inst := range detail.Instances {
-			fmt.Printf("  %s  %s  %s  %s  (Resets: -)\n",
-				inst.ID, inst.NodeID, inst.Status, inst.Health)
+			retained := " (Resets: -)"
+			if inst.Status == "CRASHED" {
+				retained = " (Logs retained: yes)"
+			}
+			fmt.Printf("  %s  %s  %s  %s%s\n",
+				inst.ID, inst.NodeID, inst.Status, inst.Health, retained)
 		}
 	}
 
