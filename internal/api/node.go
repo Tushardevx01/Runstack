@@ -3,16 +3,25 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
-
 	"encoding/json"
 	"net"
 	"net/http"
 
 	"github.com/Tushardevx01/runstack/internal/node"
+	"github.com/Tushardevx01/runstack/internal/scheduler"
 )
 
 type NodeHandler struct {
 	Registry *node.Registry
+	CapCalc  *scheduler.CapacityCalculator
+}
+
+type NodeSummary struct {
+	node.Node
+	AllocatedCPU float64 `json:"allocated_cpu"`
+	AllocatedMem int     `json:"allocated_mem"`
+	AvailableCPU float64 `json:"available_cpu"`
+	AvailableMem int     `json:"available_mem"`
 }
 
 type RegisterRequest struct {
@@ -32,7 +41,7 @@ type RegisterResponse struct {
 }
 
 type ListNodesResponse struct {
-	Nodes []node.Node `json:"nodes"`
+	Nodes []NodeSummary `json:"nodes"`
 }
 
 func (h *NodeHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -80,9 +89,28 @@ func (h *NodeHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 func (h *NodeHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := h.Registry.List()
+	var summaries []NodeSummary
+
+	var caps map[string]scheduler.NodeCapacity
+	if h.CapCalc != nil {
+		caps = h.CapCalc.CalculateAll(nodes)
+	}
+
+	for _, n := range nodes {
+		sum := NodeSummary{Node: n}
+		if h.CapCalc != nil {
+			cap := caps[n.ID]
+			sum.AllocatedCPU = float64(n.CPUCores) - cap.AvailableCPU
+			sum.AllocatedMem = int(n.Capabilities.TotalMemoryBytes/1024/1024) - cap.AvailableMemoryMB
+			sum.AvailableCPU = cap.AvailableCPU
+			sum.AvailableMem = cap.AvailableMemoryMB
+		}
+		summaries = append(summaries, sum)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ListNodesResponse{
-		Nodes: nodes,
+		Nodes: summaries,
 	})
 }
 

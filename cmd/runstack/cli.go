@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Tushardevx01/runstack/internal/api"
 	"github.com/Tushardevx01/runstack/internal/client"
 
 	"bytes"
@@ -76,7 +77,7 @@ func getNodes() error {
 		return fmt.Errorf("control plane returned status %d", resp.StatusCode)
 	}
 
-	var result ListNodesResponse
+	var result api.ListNodesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -458,6 +459,8 @@ func runCLI(args []string) {
 		fmt.Println("  apply     Apply a declarative manifest")
 		fmt.Println("  diff      Compare a manifest to Control Plane state")
 		fmt.Println("  validate  Validate a manifest locally")
+		fmt.Println("  apps      List applications")
+		fmt.Println("  app status <name> Show detailed application status")
 		fmt.Println("  cp        Start Control Plane")
 		fmt.Println("  agent     Start Agent")
 		fmt.Println("  status    Show control plane status")
@@ -488,6 +491,21 @@ func runCLI(args []string) {
 	case "validate":
 		if err := validateCommand(args[1:]); err != nil {
 			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
+	case "apps":
+		if err := runApps(args[1:]); err != nil {
+			fmt.Println("Error:", err)
+			os.Exit(1)
+		}
+	case "app":
+		if len(args) > 2 && args[1] == "status" {
+			if err := runAppStatus(args[2:]); err != nil {
+				fmt.Println("Error:", err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Println("Usage: runstack app status <name>")
 			os.Exit(1)
 		}
 	case "deploy":

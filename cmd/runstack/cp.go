@@ -115,7 +115,16 @@ func runControlPlane(args []string) {
 		NodeRegistry:     registry,
 	}
 
+	appsHandler := &api.AppsHandler{
+		AppRegistry:      appRegistry,
+		DepRegistry:      depRegistry,
+		InstanceRegistry: instRegistry,
+		DomainRegistry:   domainRegistry,
+		IngressRegistry:  ingressRegistry,
+	}
+
 	appHandler := &api.AppHandler{
+
 		Service: appService,
 	}
 	routeHandler := &api.RouteHandler{
@@ -124,6 +133,7 @@ func runControlPlane(args []string) {
 	}
 
 	capCalc := scheduler.NewCapacityCalculator(appRegistry, depRegistry, instRegistry, jobRegistry)
+	nodeHandler.CapCalc = capCalc
 	sched := scheduler.New(registry, jobRegistry, capCalc)
 	instSched := scheduler.NewInstanceScheduler(registry, instRegistry, capCalc)
 	instReconciler := scheduler.NewInstanceReconciler(appRegistry, depRegistry, instRegistry, registry)
@@ -174,8 +184,9 @@ func runControlPlane(args []string) {
 	mux.HandleFunc("POST /api/v1/jobs/{id}/result", auth.RequireNodeAuth(registry, jobHandler.ReportResult))
 
 	mux.HandleFunc("POST /api/v1/apps", auth.RequireOperator(appHandler.Create))
-	mux.HandleFunc("GET /api/v1/apps", auth.RequireOperator(appHandler.List))
+	mux.HandleFunc("GET /api/v1/apps", auth.RequireOperator(appsHandler.ListApps))
 	mux.HandleFunc("GET /api/v1/apps/{id}", auth.RequireOperator(appHandler.Get))
+	mux.HandleFunc("GET /api/v1/apps/{id}/status", auth.RequireOperator(appsHandler.GetAppStatus))
 	mux.HandleFunc("GET /api/v1/apps/{id}/logs", auth.RequireOperator(logsHandler.GetAppLogs))
 	mux.HandleFunc("PUT /api/v1/apps/{id}", auth.RequireOperator(appHandler.Update))
 	mux.HandleFunc("POST /api/v1/apps/{id}/deploy", auth.RequireOperator(appHandler.Deploy))

@@ -2,22 +2,28 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Tushardevx01/runstack/internal/api"
+	"github.com/Tushardevx01/runstack/internal/deployment"
 	"github.com/Tushardevx01/runstack/internal/manifest"
 )
 
 func applyCommand(args []string) error {
 	applyCmd := flag.NewFlagSet("apply", flag.ExitOnError)
 	file := applyCmd.String("f", "runstack.yaml", "Path to manifest file")
+	wait := applyCmd.Bool("wait", false, "Wait for rollout to complete")
+	timeout := applyCmd.Duration("timeout", 5*time.Minute, "Timeout for wait")
 	applyCmd.Parse(args)
 
-	return submitManifest("POST", "/api/v1/apply", *file)
+	return submitManifest("POST", "/api/v1/apply", *file, *wait, *timeout)
 }
 
 func diffCommand(args []string) error {
@@ -25,7 +31,7 @@ func diffCommand(args []string) error {
 	file := diffCmd.String("f", "runstack.yaml", "Path to manifest file")
 	diffCmd.Parse(args)
 
-	return submitManifest("POST", "/api/v1/diff", *file)
+	return submitManifest("POST", "/api/v1/diff", *file, false, 0)
 }
 
 func validateCommand(args []string) error {
@@ -61,7 +67,7 @@ func parseManifest(path string) (*manifest.Manifest, error) {
 	return &m, nil
 }
 
-func submitManifest(method, path, file string) error {
+func submitManifest(method, path, file string, wait bool, timeout time.Duration) error {
 	m, err := parseManifest(file)
 	if err != nil {
 		return err
@@ -93,9 +99,56 @@ func submitManifest(method, path, file string) error {
 		return err
 	}
 
-	fmt.Printf("Application: %s\nAction:      %s\nMessage:     %s\n", m.Name, res.Action, res.Message)
+	fmt.Printf("Application: %s\nAction:      %s\n", m.Name, res.Action)
 	if res.DeploymentID != "" {
 		fmt.Printf("Deployment:  %s\n", res.DeploymentID)
+	}
+
+	if wait && res.DeploymentID != "" {
+		fmt.Println("\nWaiting for rollout...")
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("timeout waiting for rollout")
+			case <-ticker.C:
+				statusResp, err := getClient().Get(fmt.Sprintf("/api/v1/apps/%s/status", m.Name))
+				if err != nil {
+					continue
+				}
+
+				var detail api.AppStatusDetail
+				err = json.NewDecoder(statusResp.Body).Decode(&detail)
+				statusResp.Body.Close()
+				if err != nil {
+					continue
+				}
+
+				if detail.ActiveDeployment != nil && detail.ActiveDeployment.ID == res.DeploymentID {
+					rollout := detail.ActiveDeployment.RolloutStatus
+					fmt.Printf("\rRollout state: %s (%d/%d Ready)  ", rollout, detail.ActiveDeployment.ReadyReplicas, detail.ActiveDeployment.DesiredReplicas)
+
+					if rollout == deployment.RolloutCompleted {
+						fmt.Println("\nRollout completed successfully.")
+						return nil
+					} else if rollout == deployment.RolloutFailed {
+						fmt.Println("\nRollout failed.")
+						if detail.ActiveDeployment.BlockedReason != "" {
+							fmt.Printf("Reason: %s\n", detail.ActiveDeployment.BlockedReason)
+						}
+						return fmt.Errorf("rollout failed")
+					} else if rollout == deployment.RolloutRolledBack {
+						fmt.Println("\nRollout rolled back.")
+						return fmt.Errorf("rollout rolled back")
+					}
+				}
+			}
+		}
 	}
 
 	return nil

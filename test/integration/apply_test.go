@@ -11,6 +11,7 @@ import (
 	"github.com/Tushardevx01/runstack/internal/application"
 	"github.com/Tushardevx01/runstack/internal/deployment"
 	"github.com/Tushardevx01/runstack/internal/ingress"
+	"github.com/Tushardevx01/runstack/internal/instance"
 	"github.com/Tushardevx01/runstack/internal/manifest"
 	"github.com/Tushardevx01/runstack/internal/route"
 )
@@ -203,5 +204,67 @@ func TestApply_RestartRecovery(t *testing.T) {
 	d, _ := domainReg.GetByName("redis.com")
 	if d.ApplicationID != app.ID {
 		t.Errorf("domain not linked")
+	}
+}
+
+func TestEndToEndUX(t *testing.T) {
+	applyH, appReg, depReg, domainReg, _, _ := setupApplyTest()
+
+	appsH := &api.AppsHandler{
+		AppRegistry:      appReg,
+		DepRegistry:      depReg,
+		InstanceRegistry: instance.NewRegistry(),
+		DomainRegistry:   domainReg,
+		IngressRegistry:  ingress.NewIngressRegistry(),
+	}
+
+	m := &manifest.Manifest{
+		Name:      "test-ux-app",
+		Image:     "nginx",
+		Replicas:  2,
+		Resources: manifest.ResourceSpec{CPU: 1.0, Memory: 128},
+		Service:   &manifest.ServiceSpec{Port: 80},
+		Domains:   []manifest.DomainSpec{{Name: "ux.example.com", TLS: true}},
+	}
+
+	b, _ := json.Marshal(m)
+	reqApply := httptest.NewRequest("POST", "/api/v1/apply", bytes.NewReader(b))
+	rrApply := httptest.NewRecorder()
+	applyH.Apply(rrApply, reqApply)
+	if rrApply.Code != http.StatusOK {
+		t.Fatalf("apply failed, status %d, body: %s", rrApply.Code, rrApply.Body.String())
+	}
+
+	// Test GET /api/v1/apps
+	req := httptest.NewRequest("GET", "/api/v1/apps", nil)
+	rr := httptest.NewRecorder()
+	appsH.ListApps(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list apps failed: %d", rr.Code)
+	}
+
+	var listRes map[string][]api.AppSummary
+	json.NewDecoder(rr.Body).Decode(&listRes)
+	if len(listRes["applications"]) != 1 || listRes["applications"][0].Name != "test-ux-app" {
+		t.Errorf("expected test-ux-app in list")
+	}
+
+	// Test GET /api/v1/apps/test-ux-app/status
+	req = httptest.NewRequest("GET", "/api/v1/apps/test-ux-app/status", nil)
+	// We need a router to extract {name}, but our handler uses r.URL.Path parts manually.
+	req.URL.Path = "/api/v1/apps/test-ux-app/status"
+	rr = httptest.NewRecorder()
+	appsH.GetAppStatus(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get app status failed: %d", rr.Code)
+	}
+
+	var statusRes api.AppStatusDetail
+	json.NewDecoder(rr.Body).Decode(&statusRes)
+	if statusRes.Application.Name != "test-ux-app" {
+		t.Errorf("expected detail name test-ux-app, got %s", statusRes.Application.Name)
+	}
+	if len(statusRes.Domains) != 1 || statusRes.Domains[0].Name != "ux.example.com" {
+		t.Errorf("expected domain ux.example.com")
 	}
 }
