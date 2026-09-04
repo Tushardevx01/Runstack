@@ -1,0 +1,11 @@
+ALTER TABLE applications DROP CONSTRAINT IF EXISTS fk_applications_active_deployment;
+
+DROP TABLE IF EXISTS routes;
+DROP TABLE IF EXISTS ingresses;
+DROP TABLE IF EXISTS domains;
+DROP TABLE IF EXISTS secrets;
+DROP TABLE IF EXISTS jobs;
+DROP TABLE IF EXISTS instances;
+DROP TABLE IF EXISTS deployments;
+DROP TABLE IF EXISTS applications;
+DROP TABLE IF EXISTS nodes;

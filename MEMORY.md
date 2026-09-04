@@ -180,4 +180,11 @@ Introduced `Service` domain, local `PortAllocator`, and `RoutingReconciler` to g
 - See `docs/MILESTONE_8M_DESIGN.md` for the authoritative design.
 - Introduces `runstack.yaml` as the durable source of desired state.
 - Retains the V1 "No Database" constraint while solving Control Plane restart volatility.
-* **8O**: Crash Log Retention & Incident Debugging.
+* **9A**: Crash Log Retention & Incident Debugging.
+
+## Milestone 9A: PostgreSQL Foundation (V2)
+**Date:** 2026-09-04
+**Summary:** Implemented the RunStack V2 Postgres foundation in `internal/db` and `internal/repository`. Introduced migrations, database connections, explicit transactions, row-level locking (FOR UPDATE), and a full V1 schema translation (applications, deployments, instances, nodes, jobs, secrets, domains, routes, ingresses). ExecutionID fencing and Node Auth logic were successfully translated to SQL and integration tested via Docker-based PostgreSQL.
+**Key Constraints Enforced:**
+*   **No split-brain dual-writes**: Repositories are established alongside V1 registries, prepared for a hard cutover in the next milestone, rather than silently syncing.
+*   **Fencing Preserved**: `UpdateInstanceStatusWithFencing` explicitly rejects stale claims via `ErrStaleUpdate`.

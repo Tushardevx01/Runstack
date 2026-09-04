@@ -170,3 +170,10 @@ Certificates are held in RAM. Upon a Control Plane restart, certificates are los
 ## Declarative Manifests (Milestone 8M Design)
 RunStack V1 relies on the developer's Git repository (`runstack.yaml`) as the durable source of truth. The Control Plane holds only ephemeral observed state in memory. Re-applying the manifest reconstructs the entire application topology.
 - **8O**: Bounded crash-log retention buffers preserve recent crash evidence directly on the Agent.
+
+## V2 State Model (Milestone 9A)
+RunStack V2 is actively migrating from in-memory registries to a PostgreSQL durable state model. 
+*   **Database**: PostgreSQL
+*   **Transactions**: Controllers and Services must use explicit SQL transactions to ensure cross-domain atomicity (e.g., App update + Deployment creation).
+*   **Row-Level Locking**: Concurrent operations (like scheduler polling) use `SELECT FOR UPDATE` to avoid double-assignment races.
+*   **ExecutionID Fencing**: Enforced at the SQL layer via conditional updates (`WHERE execution_id = ?`).

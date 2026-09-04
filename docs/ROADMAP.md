@@ -93,3 +93,12 @@
 - See `docs/MILESTONE_8M_DESIGN.md` for the authoritative design.
 - Introduces `runstack.yaml` as the durable source of desired state.
 - Retains the V1 "No Database" constraint while solving Control Plane restart volatility.
+
+## V2 Milestones
+
+### Milestone 9A: PostgreSQL Foundation (Completed)
+* [x] Establish `internal/db` and migration engine.
+* [x] Draft initial domain schema (applications, deployments, instances, jobs, nodes, secrets, domains, ingresses).
+* [x] Implement transactional repository pattern with explicit row locking (`SELECT FOR UPDATE`).
+* [x] Translate ExecutionID fencing logic to SQL.
+* [x] Add PostgreSQL integration tests and Docker-compose local setup.
